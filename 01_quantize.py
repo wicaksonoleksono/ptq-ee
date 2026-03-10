@@ -117,10 +117,25 @@ def quantize_int8_bnb(model_id: str, out_dir: Path):
 # ---------------------------------------------------------------------------
 
 def quantize_awq(model_id: str, out_dir: Path):
-    try:
-        from awq import AutoAWQForCausalLM
-    except ImportError:
-        print("ERROR: autoawq not installed. Run: pip install autoawq")
+    import warnings
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="awq")
+
+    AutoAWQForCausalLM = None
+    # Try multiple import paths (autoawq moved things around in later versions)
+    for import_path in [
+        lambda: __import__("awq", fromlist=["AutoAWQForCausalLM"]).AutoAWQForCausalLM,
+        lambda: __import__("awq.models.auto", fromlist=["AutoAWQForCausalLM"]).AutoAWQForCausalLM,
+    ]:
+        try:
+            AutoAWQForCausalLM = import_path()
+            break
+        except (ImportError, AttributeError):
+            continue
+
+    if AutoAWQForCausalLM is None:
+        print("ERROR: autoawq not installed or AutoAWQForCausalLM not found.")
+        print("  Run: pip install autoawq")
+        print("  Or try: pip install autoawq==0.2.6")
         sys.exit(1)
 
     method_cfg = CFG["ptq_methods"]["awq"]
@@ -158,45 +173,35 @@ def quantize_awq(model_id: str, out_dir: Path):
 # ---------------------------------------------------------------------------
 
 def quantize_gptq(model_id: str, out_dir: Path):
-    try:
-        from optimum.gptq import GPTQQuantizer
-    except ImportError:
-        print("ERROR: optimum[gptq] not installed. Run: pip install optimum[gptq]")
-        sys.exit(1)
-
     import torch
     from datasets import load_dataset
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, GPTQConfig
 
     method_cfg = CFG["ptq_methods"]["gptq"]
-
-    print(f"[GPTQ] Loading {model_id} ...")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(MODEL_CACHE))
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16,
-        device_map="auto",
-        cache_dir=str(MODEL_CACHE),
-    )
 
     # Prepare calibration data (128 samples from wikitext-2)
     print("[GPTQ] Preparing calibration data ...")
     data = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
     calibration_texts = [s for s in data["text"] if len(s.strip()) > 50][:128]
-    calibration_dataset = [
-        tokenizer(s, return_tensors="pt", truncation=True, max_length=512)
-        for s in calibration_texts
-    ]
 
-    print(f"[GPTQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
-    quantizer = GPTQQuantizer(
+    tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(MODEL_CACHE))
+
+    gptq_config = GPTQConfig(
         bits=method_cfg["bits_weights"],
         group_size=method_cfg["group_size"],
-        damp_percent=0.01,
         desc_act=False,
-        dataset=calibration_dataset,
+        dataset=calibration_texts,
+        tokenizer=tokenizer,
     )
-    model = quantizer.quantize_model(model, tokenizer)
+
+    print(f"[GPTQ] Loading + quantizing {model_id} (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        quantization_config=gptq_config,
+        torch_dtype=torch.float16,
+        device_map="auto",
+        cache_dir=str(MODEL_CACHE),
+    )
 
     print(f"[GPTQ] Saving to {out_dir} ...")
     out_dir.mkdir(parents=True, exist_ok=True)

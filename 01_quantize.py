@@ -159,9 +159,10 @@ def quantize_awq(model_id: str, out_dir: Path):
 
 def quantize_gptq(model_id: str, out_dir: Path):
     try:
-        from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
+        from gptqmodel import GPTQModel
+        from gptqmodel.quantization import QuantizeConfig
     except ImportError:
-        print("ERROR: auto-gptq not installed. Run: pip install auto-gptq")
+        print("ERROR: gptqmodel not installed. Run: pip install gptqmodel")
         sys.exit(1)
 
     from datasets import load_dataset
@@ -169,7 +170,7 @@ def quantize_gptq(model_id: str, out_dir: Path):
 
     method_cfg = CFG["ptq_methods"]["gptq"]
 
-    quant_config = BaseQuantizeConfig(
+    quant_config = QuantizeConfig(
         bits=method_cfg["bits_weights"],
         group_size=method_cfg["group_size"],
         damp_percent=0.01,
@@ -178,7 +179,7 @@ def quantize_gptq(model_id: str, out_dir: Path):
 
     print(f"[GPTQ] Loading {model_id} ...")
     tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(MODEL_CACHE))
-    model = AutoGPTQForCausalLM.from_pretrained(
+    model = GPTQModel.load(
         model_id,
         quant_config,
         cache_dir=str(MODEL_CACHE),

@@ -39,8 +39,8 @@
       "bits_weights": 4,
       "bits_activations": 16,
       "group_size": 128,
-      "library": "auto-gptq",
-      "repo": "https://github.com/IST-DASLab/gptq"
+      "library": "gptqmodel",
+      "repo": "https://github.com/ModelCloud/GPTQModel"
     },
     "smoothquant": {
       "description": "SmoothQuant migration of quantization difficulty — W8A8",

@@ -119,15 +119,14 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
 
     elif ptq_method == "gptq":
         try:
-            from auto_gptq import AutoGPTQForCausalLM
+            from gptqmodel import GPTQModel
         except ImportError:
-            print("ERROR: auto-gptq not installed. Run: pip install auto-gptq")
+            print("ERROR: gptqmodel not installed. Run: pip install gptqmodel")
             sys.exit(1)
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_id_or_path)
-        model = AutoGPTQForCausalLM.from_quantized(
+        model = GPTQModel.load(
             model_id_or_path,
             device_map=device,
-            use_safetensors=True,
         )
         model = model.model
 

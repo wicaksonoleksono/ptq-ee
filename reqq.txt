@@ -23,7 +23,7 @@ matplotlib==3.10.0
 # --- PTQ libs ---
 bitsandbytes>=0.43.0
 autoawq>=0.2.0
-auto-gptq>=0.7.1
+gptqmodel>=1.0.0
 smoothquant>=0.1.1
 
 # --- Energy measurement ---

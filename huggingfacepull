@@ -1,0 +1,43 @@
+facebook/layerskip-llama2-7B
+facebook/layerskip-llama2-13B
+facebook/layerskip-llama2-70B
+facebook/layerskip-codellama-7B
+facebook/layerskip-codellama-34B
+facebook/layerskip-llama3-8B
+facebook/layerskip-llama3.2-1B
+
+Task,Task Detail,Link
+BoolQ,Yes/No question answering,https://huggingface.co/datasets/google/boolq
+
+HellaSwag,Commonsense natural language inference and sentence completion,https://huggingface.co/datasets/Rowan/hellaswag
+
+ARC,Science question answering multiple choice,https://huggingface.co/datasets/allenai/ai2_arc
+
+OpenBookQA,Open-book science question answering multiple choice,https://huggingface.co/datasets/allenai/openbookqa
+
+COPA,Causal reasoning multiple choice,https://huggingface.co/datasets/super_glue
+
+RACE,Reading comprehension multiple choice,https://huggingface.co/datasets/race
+
+MMLU,Massive multitask knowledge and reasoning evaluation,https://huggingface.co/datasets/cais/mmlu
+
+Natural Questions,Open-domain question answering,https://huggingface.co/datasets/google-research-datasets/natural_questions
+
+TriviaQA,Trivia-based open-domain question answering,https://huggingface.co/datasets/mandarjoshi/trivia_qa
+
+MATH,Mathematical reasoning and problem solving,https://huggingface.co/datasets/EleutherAI/hendrycks_math
+
+Wikipedia,Language modeling and perplexity evaluation corpus,https://huggingface.co/datasets/wikimedia/wikipedia
+
+BookCorpus,Language modeling and perplexity evaluation corpus,https://huggingface.co/datasets/bookcorpus/bookcorpus
+
+The Stack,Code language modeling and code generation corpus,https://huggingface.co/datasets/bigcode/the-stack
+
+
+
+
+AWQ: https://github.com/mit-han-lab/llm-awq
+
+GPTQ: https://github.com/IST-DASLab/gptq
+
+SmoothQuant: https://github.com/mit-han-lab/smoothquant

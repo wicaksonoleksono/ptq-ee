@@ -182,8 +182,17 @@ def run_benchmark(args):
 
     # Init distributed (required by LayerSkip setup)
     if not torch.distributed.is_initialized():
+        if "MASTER_ADDR" not in os.environ:
+            os.environ["MASTER_ADDR"] = "localhost"
+        if "MASTER_PORT" not in os.environ:
+            os.environ["MASTER_PORT"] = "12355"
+        if "WORLD_SIZE" not in os.environ:
+            os.environ["WORLD_SIZE"] = "1"
+        if "RANK" not in os.environ:
+            os.environ["RANK"] = "0"
         if "LOCAL_RANK" not in os.environ:
             os.environ["LOCAL_RANK"] = "0"
+
         backend = "cpu:gloo" if device == "cpu" else "cuda:nccl,cpu:gloo"
         torch.distributed.init_process_group(
             backend=backend,

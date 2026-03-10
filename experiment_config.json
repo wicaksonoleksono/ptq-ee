@@ -1,0 +1,124 @@
+{
+  "models": {
+    "primary": "facebook/layerskip-llama2-70B",
+    "all_layerskip": [
+      "facebook/layerskip-llama2-7B",
+      "facebook/layerskip-llama2-13B",
+      "facebook/layerskip-llama2-70B",
+      "facebook/layerskip-codellama-7B",
+      "facebook/layerskip-codellama-34B",
+      "facebook/layerskip-llama3-8B",
+      "facebook/layerskip-llama3.2-1B"
+    ],
+    "vanilla_baseline": "meta-llama/Llama-2-70b-hf"
+  },
+
+  "ptq_methods": {
+    "fp16": {
+      "description": "Standard float16 — no quantization, reference baseline",
+      "bits_weights": 16,
+      "bits_activations": 16,
+      "library": "transformers"
+    },
+    "int8_bnb": {
+      "description": "Naive int8 via bitsandbytes LLM.int8() — simple PTQ baseline",
+      "bits_weights": 8,
+      "bits_activations": 8,
+      "library": "bitsandbytes"
+    },
+    "awq": {
+      "description": "Activation-aware Weight Quantization — W4A16",
+      "bits_weights": 4,
+      "bits_activations": 16,
+      "group_size": 128,
+      "library": "autoawq",
+      "repo": "https://github.com/mit-han-lab/llm-awq"
+    },
+    "gptq": {
+      "description": "GPTQ second-order weight quantization — W4A16",
+      "bits_weights": 4,
+      "bits_activations": 16,
+      "group_size": 128,
+      "library": "auto-gptq",
+      "repo": "https://github.com/IST-DASLab/gptq"
+    },
+    "smoothquant": {
+      "description": "SmoothQuant migration of quantization difficulty — W8A8",
+      "bits_weights": 8,
+      "bits_activations": 8,
+      "alpha": 0.5,
+      "library": "smoothquant",
+      "repo": "https://github.com/mit-han-lab/smoothquant"
+    }
+  },
+
+  "decoding_strategies": {
+    "autoregressive": {
+      "generation_strategy": "autoregressive"
+    },
+    "self_speculative_small": {
+      "generation_strategy": "self_speculative",
+      "exit_layer": 20,
+      "num_speculations": 6
+    },
+    "self_speculative_medium": {
+      "generation_strategy": "self_speculative",
+      "exit_layer": 30,
+      "num_speculations": 6
+    },
+    "self_speculative_large": {
+      "generation_strategy": "self_speculative",
+      "exit_layer": 40,
+      "num_speculations": 6
+    }
+  },
+
+  "tasks": {
+    "cnn_dm_summarization": {
+      "dataset": "cnn_dm_summarization",
+      "num_samples": 200,
+      "primary_metric": "rouge_l",
+      "type": "generation"
+    },
+    "xsum_summarization": {
+      "dataset": "xsum_summarization",
+      "num_samples": 200,
+      "primary_metric": "rouge_l",
+      "type": "generation"
+    },
+    "human_eval": {
+      "dataset": "human_eval",
+      "num_samples": 164,
+      "primary_metric": "exact_match",
+      "type": "generation"
+    }
+  },
+
+  "eval_tasks_lm_harness": {
+    "hellaswag": { "num_samples": 500, "metric": "accuracy", "type": "classification" },
+    "arc_challenge": { "num_samples": 300, "metric": "accuracy", "type": "classification" },
+    "mmlu": { "num_samples": 285, "metric": "accuracy", "type": "classification" },
+    "gsm8k": { "num_samples": 200, "metric": "exact_match", "type": "generation" }
+  },
+
+  "layerskip_sweep": {
+    "exit_layers": [10, 20, 30, 40],
+    "num_speculations": [4, 6, 8],
+    "sweep_dataset": "cnn_dm_summarization",
+    "sweep_num_samples": 50
+  },
+
+  "paths": {
+    "layerskip_dir": "../LayerSkip",
+    "quantized_models_dir": "../quantized_models",
+    "logs_dir": "../logs",
+    "results_dir": "../results",
+    "figures_dir": "../figures",
+    "model_cache_dir": "../model_cache"
+  },
+
+  "energy": {
+    "gpu_device_idx": 0,
+    "sample_interval_s": 0.1
+  }
+}

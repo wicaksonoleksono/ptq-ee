@@ -55,7 +55,7 @@ CONFIG_PATH = SCRIPT_DIR / "experiment_config.json"
 with open(CONFIG_PATH) as f:
     CFG = json.load(f)
 
-sys.path.insert(0, str(SCRIPT_DIR))
+sys.path.insert(0, str(SCRIPT_DIR / "LayerSkip"))
 
 QUANT_DIR = (SCRIPT_DIR / CFG["paths"]["quantized_models_dir"]).resolve()
 MODEL_CACHE = (SCRIPT_DIR / CFG["paths"]["model_cache_dir"]).resolve()

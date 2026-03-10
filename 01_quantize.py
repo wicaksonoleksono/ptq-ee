@@ -134,7 +134,7 @@ def quantize_awq(model_id: str, out_dir: Path):
     tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         device_map="auto",
         cache_dir=str(MODEL_CACHE),
     )
@@ -144,6 +144,7 @@ def quantize_awq(model_id: str, out_dir: Path):
             ignore=["lm_head"],
             scheme="W4A16",
             targets=["Linear"],
+            duo_scaling=False,
         ),
     ]
 

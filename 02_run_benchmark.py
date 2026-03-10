@@ -215,8 +215,8 @@ def run_benchmark(args):
     generation_config = GenerationConfig(
         generation_strategy=args.generation_strategy,
         max_steps=args.max_steps,
-        exit_layer=args.exit_layer if args.generation_strategy == "self_speculative" else None,
-        num_speculations=args.num_speculations if args.generation_strategy == "self_speculative" else None,
+        exit_layer=args.exit_layer if args.generation_strategy == "self_speculative" else -1,
+        num_speculations=args.num_speculations if args.generation_strategy == "self_speculative" else -1,
         sample=args.sample,
     )
     benchmark_arguments = BenchmarkArguments(

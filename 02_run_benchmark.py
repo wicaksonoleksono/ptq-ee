@@ -118,12 +118,10 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
         model = model.model   # unwrap to get the underlying transformers model
 
     elif ptq_method == "gptq":
-        # GPTQ models saved via optimum load natively with transformers
+        # GPTQ models saved via gptqmodel
+        from gptqmodel import GPTQModel
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_id_or_path)
-        model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_id_or_path,
-            device_map=device,
-        )
+        model = GPTQModel.load(model_id_or_path, device=device)
 
     elif ptq_method == "smoothquant":
         # SmoothQuant model is saved as a standard HF model with W8A8Linear layers

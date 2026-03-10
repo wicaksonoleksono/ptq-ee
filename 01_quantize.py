@@ -173,9 +173,15 @@ def quantize_awq(model_id: str, out_dir: Path):
 # ---------------------------------------------------------------------------
 
 def quantize_gptq(model_id: str, out_dir: Path):
+    try:
+        from gptqmodel import GPTQModel, QuantizeConfig
+    except ImportError:
+        print("ERROR: gptqmodel not installed. Run: pip install gptqmodel")
+        sys.exit(1)
+
     import torch
     from datasets import load_dataset
-    from transformers import AutoModelForCausalLM, AutoTokenizer, GPTQConfig
+    from transformers import AutoTokenizer
 
     method_cfg = CFG["ptq_methods"]["gptq"]
 
@@ -185,27 +191,33 @@ def quantize_gptq(model_id: str, out_dir: Path):
     calibration_texts = [s for s in data["text"] if len(s.strip()) > 50][:128]
 
     tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(MODEL_CACHE))
+    tokenizer.pad_token = tokenizer.eos_token
 
-    gptq_config = GPTQConfig(
+    # Tokenize calibration data
+    calibration_dataset = [
+        tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+        for text in calibration_texts
+    ]
+
+    quant_config = QuantizeConfig(
         bits=method_cfg["bits_weights"],
         group_size=method_cfg["group_size"],
         desc_act=False,
-        dataset=calibration_texts,
-        tokenizer=tokenizer,
     )
 
-    print(f"[GPTQ] Loading + quantizing {model_id} (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
-    model = AutoModelForCausalLM.from_pretrained(
+    print(f"[GPTQ] Loading {model_id} ...")
+    model = GPTQModel.load(
         model_id,
-        quantization_config=gptq_config,
+        quant_config,
         torch_dtype=torch.float16,
-        device_map="auto",
-        cache_dir=str(MODEL_CACHE),
     )
+
+    print(f"[GPTQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
+    model.quantize(calibration_dataset)
 
     print(f"[GPTQ] Saving to {out_dir} ...")
     out_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(str(out_dir))
+    model.save(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
     save_metadata(out_dir, model_id, "gptq", {"bits": method_cfg["bits_weights"], "group_size": method_cfg["group_size"]})
     print("[GPTQ] Done.")

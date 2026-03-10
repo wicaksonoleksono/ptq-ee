@@ -55,12 +55,7 @@ CONFIG_PATH = SCRIPT_DIR / "experiment_config.json"
 with open(CONFIG_PATH) as f:
     CFG = json.load(f)
 
-LAYERSKIP_DIR = Path(os.environ.get("LAYERSKIP_DIR", SCRIPT_DIR / CFG["paths"]["layerskip_dir"])).resolve()
-if not LAYERSKIP_DIR.exists():
-    print(f"ERROR: LayerSkip directory not found at {LAYERSKIP_DIR}")
-    print(f"  Set LAYERSKIP_DIR env var or check experiment_config.json paths.layerskip_dir")
-    sys.exit(1)
-sys.path.insert(0, str(LAYERSKIP_DIR))
+sys.path.insert(0, str(SCRIPT_DIR))
 
 QUANT_DIR = (SCRIPT_DIR / CFG["paths"]["quantized_models_dir"]).resolve()
 MODEL_CACHE = (SCRIPT_DIR / CFG["paths"]["model_cache_dir"]).resolve()

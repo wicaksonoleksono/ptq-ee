@@ -19,7 +19,6 @@ MAX_STEPS      := 256
 
 ALL_METHODS    := fp16 int8_bnb awq gptq smoothquant
 ALL_TASKS      := cnn_dm_summarization xsum_summarization
-LAYERSKIP      := ./LayerSkip
 
 .PHONY: help dry-run dirs download \
         quantize quantize-all quantize-fp16 quantize-int8 quantize-awq quantize-gptq quantize-smoothquant \
@@ -112,13 +111,13 @@ sweep: dirs
 	@echo "========================================"
 	@echo "Phase 2: Sweeping LayerSkip hyperparameters"
 	@echo "========================================"
-	cd $(LAYERSKIP) && LOCAL_RANK=0 python sweep.py \
+	LOCAL_RANK=0 python sweep.py \
 		--model $(MODEL) \
 		--dataset cnn_dm_summarization \
 		--generation_strategy self_speculative \
 		--num_samples 50 \
 		--max_steps 128 \
-		--output_dir ../logs/sweep \
+		--output_dir ./logs/sweep \
 		--sample False
 	@echo ""
 	@echo "Sweep done. Check logs/sweep/"

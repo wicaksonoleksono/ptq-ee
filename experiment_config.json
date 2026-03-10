@@ -101,7 +101,6 @@
   },
 
   "paths": {
-    "layerskip_dir": "./LayerSkip",
     "quantized_models_dir": "./quantized_models",
     "logs_dir": "./logs",
     "results_dir": "./results",

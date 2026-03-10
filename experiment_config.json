@@ -1,14 +1,14 @@
 {
   "models": {
-    "primary": "facebook/layerskip-llama2-70B",
+    "primary":"facebook/layerskip-llama2-13B",
     "all_layerskip": [
-      "facebook/layerskip-llama2-7B",
-      "facebook/layerskip-llama2-13B",
-      "facebook/layerskip-llama2-70B",
-      "facebook/layerskip-codellama-7B",
-      "facebook/layerskip-codellama-34B",
-      "facebook/layerskip-llama3-8B",
-      "facebook/layerskip-llama3.2-1B"
+      // "facebook/layerskip-llama2-7B",
+      "facebook/layerskip-llama2-13B"
+      // "facebook/layerskip-llama2-70B",
+      // "facebook/layerskip-codellama-7B",
+      // "facebook/layerskip-codellama-34B",
+      // "facebook/layerskip-llama3-8B",
+      // "facebook/layerskip-llama3.2-1B"
     ],
     "vanilla_baseline": "meta-llama/Llama-2-70b-hf"
   },

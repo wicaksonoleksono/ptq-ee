@@ -39,8 +39,8 @@
       "bits_weights": 4,
       "bits_activations": 16,
       "group_size": 128,
-      "library": "gptqmodel",
-      "repo": "https://github.com/ModelCloud/GPTQModel"
+      "library": "optimum[gptq]",
+      "repo": "https://github.com/huggingface/optimum"
     },
     "smoothquant": {
       "description": "SmoothQuant migration of quantization difficulty — W8A8",

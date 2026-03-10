@@ -159,47 +159,48 @@ def quantize_awq(model_id: str, out_dir: Path):
 
 def quantize_gptq(model_id: str, out_dir: Path):
     try:
-        from gptqmodel import GPTQModel
-        from gptqmodel.quantization import QuantizeConfig
+        from optimum.gptq import GPTQQuantizer
     except ImportError:
-        print("ERROR: gptqmodel not installed. Run: pip install gptqmodel")
+        print("ERROR: optimum[gptq] not installed. Run: pip install optimum[gptq]")
         sys.exit(1)
 
+    import torch
     from datasets import load_dataset
-    from transformers import AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
     method_cfg = CFG["ptq_methods"]["gptq"]
 
-    quant_config = QuantizeConfig(
-        bits=method_cfg["bits_weights"],
-        group_size=method_cfg["group_size"],
-        damp_percent=0.01,
-        desc_act=False,
-    )
-
     print(f"[GPTQ] Loading {model_id} ...")
     tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(MODEL_CACHE))
-    model = GPTQModel.load(
+    model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        quant_config,
+        torch_dtype=torch.float16,
+        device_map="auto",
         cache_dir=str(MODEL_CACHE),
     )
 
     # Prepare calibration data (128 samples from wikitext-2)
     print("[GPTQ] Preparing calibration data ...")
     data = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
-    examples = [
-        tokenizer(s, return_tensors="pt")
-        for s in data["text"]
-        if len(s.strip()) > 50
-    ][:128]
+    calibration_texts = [s for s in data["text"] if len(s.strip()) > 50][:128]
+    calibration_dataset = [
+        tokenizer(s, return_tensors="pt", truncation=True, max_length=512)
+        for s in calibration_texts
+    ]
 
     print(f"[GPTQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
-    model.quantize(examples)
+    quantizer = GPTQQuantizer(
+        bits=method_cfg["bits_weights"],
+        group_size=method_cfg["group_size"],
+        damp_percent=0.01,
+        desc_act=False,
+        dataset=calibration_dataset,
+    )
+    model = quantizer.quantize_model(model, tokenizer)
 
     print(f"[GPTQ] Saving to {out_dir} ...")
     out_dir.mkdir(parents=True, exist_ok=True)
-    model.save_quantized(str(out_dir), use_safetensors=True)
+    model.save_pretrained(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
     save_metadata(out_dir, model_id, "gptq", {"bits": method_cfg["bits_weights"], "group_size": method_cfg["group_size"]})
     print("[GPTQ] Done.")

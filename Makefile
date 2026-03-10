@@ -8,7 +8,7 @@
 
 SHELL := /bin/bash
 
-MODEL          := facebook/layerskip-llama2-70B
+MODEL          := facebook/layerskip-llama2-13B
 METHOD         := awq
 TASK           := cnn_dm_summarization
 STRATEGY       := autoregressive

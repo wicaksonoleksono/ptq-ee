@@ -117,54 +117,53 @@ def quantize_int8_bnb(model_id: str, out_dir: Path):
 # ---------------------------------------------------------------------------
 
 def quantize_awq(model_id: str, out_dir: Path):
-    import warnings
-    warnings.filterwarnings("ignore", category=DeprecationWarning, module="awq")
-
-    AutoAWQForCausalLM = None
-    # Try multiple import paths (autoawq moved things around in later versions)
-    for import_path in [
-        lambda: __import__("awq", fromlist=["AutoAWQForCausalLM"]).AutoAWQForCausalLM,
-        lambda: __import__("awq.models.auto", fromlist=["AutoAWQForCausalLM"]).AutoAWQForCausalLM,
-    ]:
-        try:
-            AutoAWQForCausalLM = import_path()
-            break
-        except (ImportError, AttributeError):
-            continue
-
-    if AutoAWQForCausalLM is None:
-        print("ERROR: autoawq not installed or AutoAWQForCausalLM not found.")
-        print("  Run: pip install autoawq")
-        print("  Or try: pip install autoawq==0.2.6")
+    try:
+        from llmcompressor import oneshot
+        from llmcompressor.modifiers.awq import AWQModifier
+    except ImportError:
+        print("ERROR: llmcompressor not installed. Run: pip install llmcompressor")
         sys.exit(1)
 
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
     method_cfg = CFG["ptq_methods"]["awq"]
-    quant_config = {
-        "zero_point": True,
-        "q_group_size": method_cfg["group_size"],
-        "w_bit": method_cfg["bits_weights"],
-        "version": "GEMM",
-    }
 
     print(f"[AWQ] Loading {model_id} ...")
-    model = AutoAWQForCausalLM.from_pretrained(
-        model_id,
-        cache_dir=str(MODEL_CACHE),
-        safetensors=True,
-    )
-
-    from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(MODEL_CACHE))
     tokenizer.pad_token = tokenizer.eos_token
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,
+        device_map="auto",
+        cache_dir=str(MODEL_CACHE),
+    )
+
+    recipe = [
+        AWQModifier(
+            ignore=["lm_head"],
+            scheme="W4A16",
+            targets=["Linear"],
+        ),
+    ]
 
     print(f"[AWQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
-    model.quantize(tokenizer, quant_config=quant_config)
+    oneshot(
+        model=model,
+        tokenizer=tokenizer,
+        dataset="wikitext",
+        dataset_config_name="wikitext-2-raw-v1",
+        split="train",
+        recipe=recipe,
+        max_seq_length=512,
+        num_calibration_samples=128,
+    )
 
     print(f"[AWQ] Saving to {out_dir} ...")
     out_dir.mkdir(parents=True, exist_ok=True)
-    model.save_quantized(str(out_dir))
+    model.save_pretrained(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
-    save_metadata(out_dir, model_id, "awq", {"quant_config": quant_config})
+    save_metadata(out_dir, model_id, "awq")
     print("[AWQ] Done.")
 
 
@@ -174,50 +173,50 @@ def quantize_awq(model_id: str, out_dir: Path):
 
 def quantize_gptq(model_id: str, out_dir: Path):
     try:
-        from gptqmodel import GPTQModel, QuantizeConfig
+        from llmcompressor import oneshot
+        from llmcompressor.modifiers.quantization import GPTQModifier
     except ImportError:
-        print("ERROR: gptqmodel not installed. Run: pip install gptqmodel")
+        print("ERROR: llmcompressor not installed. Run: pip install llmcompressor")
         sys.exit(1)
 
     import torch
-    from datasets import load_dataset
-    from transformers import AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
     method_cfg = CFG["ptq_methods"]["gptq"]
 
-    # Prepare calibration data (128 samples from wikitext-2)
-    print("[GPTQ] Preparing calibration data ...")
-    data = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
-    calibration_texts = [s for s in data["text"] if len(s.strip()) > 50][:128]
-
+    print(f"[GPTQ] Loading {model_id} ...")
     tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(MODEL_CACHE))
     tokenizer.pad_token = tokenizer.eos_token
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,
+        device_map="auto",
+        cache_dir=str(MODEL_CACHE),
+    )
 
-    # Tokenize calibration data
-    calibration_dataset = [
-        tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
-        for text in calibration_texts
+    recipe = [
+        GPTQModifier(
+            ignore=["lm_head"],
+            scheme="W4A16",
+            targets=["Linear"],
+        ),
     ]
 
-    quant_config = QuantizeConfig(
-        bits=method_cfg["bits_weights"],
-        group_size=method_cfg["group_size"],
-        desc_act=False,
-    )
-
-    print(f"[GPTQ] Loading {model_id} ...")
-    model = GPTQModel.load(
-        model_id,
-        quant_config,
-        torch_dtype=torch.float16,
-    )
-
     print(f"[GPTQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
-    model.quantize(calibration_dataset)
+    oneshot(
+        model=model,
+        tokenizer=tokenizer,
+        dataset="wikitext",
+        dataset_config_name="wikitext-2-raw-v1",
+        split="train",
+        recipe=recipe,
+        max_seq_length=512,
+        num_calibration_samples=128,
+    )
 
     print(f"[GPTQ] Saving to {out_dir} ...")
     out_dir.mkdir(parents=True, exist_ok=True)
-    model.save(str(out_dir))
+    model.save_pretrained(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
     save_metadata(out_dir, model_id, "gptq", {"bits": method_cfg["bits_weights"], "group_size": method_cfg["group_size"]})
     print("[GPTQ] Done.")

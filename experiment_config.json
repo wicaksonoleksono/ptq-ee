@@ -25,16 +25,14 @@
       "bits_weights": 4,
       "bits_activations": 16,
       "group_size": 128,
-      "library": "autoawq",
-      "repo": "https://github.com/mit-han-lab/llm-awq"
+      "library": "llmcompressor"
     },
     "gptq": {
       "description": "GPTQ second-order weight quantization — W4A16",
       "bits_weights": 4,
       "bits_activations": 16,
       "group_size": 128,
-      "library": "optimum[gptq]",
-      "repo": "https://github.com/huggingface/optimum"
+      "library": "llmcompressor"
     },
     "smoothquant": {
       "description": "SmoothQuant migration of quantization difficulty — W8A8",

@@ -104,24 +104,20 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
         )
 
     elif ptq_method == "awq":
-        try:
-            from awq import AutoAWQForCausalLM
-        except ImportError:
-            print("ERROR: autoawq not installed. Run: pip install autoawq")
-            sys.exit(1)
+        # AWQ models saved by llm-compressor are standard HF format
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_id_or_path)
-        model = AutoAWQForCausalLM.from_quantized(
+        model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
-            fuse_layers=True,
-            trust_remote_code=False,
+            device_map=device,
         )
-        model = model.model   # unwrap to get the underlying transformers model
 
     elif ptq_method == "gptq":
-        # GPTQ models saved via gptqmodel
-        from gptqmodel import GPTQModel
+        # GPTQ models saved by llm-compressor are standard HF format
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_id_or_path)
-        model = GPTQModel.load(model_id_or_path, device=device)
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_id_or_path,
+            device_map=device,
+        )
 
     elif ptq_method == "smoothquant":
         # SmoothQuant model is saved as a standard HF model with W8A8Linear layers

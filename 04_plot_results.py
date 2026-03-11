@@ -336,23 +336,68 @@ def plot_heatmap(runs: list, out_dir: Path):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def plot_energy_spikes(logs_dir: Path, out_dir: Path):
+    \"\"\"
+    Reads progress_*.json backup files to plot cumulative Joules across the run
+    to show energy 'spikes' and slopes for different methods.
+    \"\"\"
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    found_files = list(logs_dir.glob(\"progress_*.json\"))
+    if not found_files:
+        # Check current dir as well
+        found_files = list(Path(\".\").glob(\"progress_*.json\"))
+
+    if not found_files:
+        print(\"  [energy spikes] No progress backup files found, skipping spike plot.\")
+        return
+
+    for p_file in found_files:
+        with open(p_file) as f:
+            data = json.load(f)
+
+        if not data: continue
+
+        indices = [i.get(\"index\") for i in data]
+        joules = [i.get(\"joules\") for i in data]
+
+        # Determine method from filename
+        # progress_llama2-13B__awq__self_speculative__cnn_dm_summarization.json
+        label = p_file.stem.replace(\"progress_\", \"\").replace(\"__cnn_dm_summarization\", \"\")
+
+        ax.plot(indices, joules, label=label, alpha=0.8, linewidth=1.5)
+
+    ax.set_xlabel(\"Sample Index\")
+    ax.set_ylabel(\"Cumulative Energy (Joules)\")
+    ax.set_title(\"Energy Consumption Profile: PTQ × Decoding (Sample-by-Sample)\")
+    ax.legend(fontsize=7, loc=\"upper left\", bbox_to_anchor=(1, 1))
+    ax.grid(True, linestyle=\"--\", alpha=0.3)
+
+    path = out_dir / \"energy_spikes_profile.png\"
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches=\"tight\")
+    plt.close(fig)
+    print(f\"  Saved: {path}\")
 
 def main():
+    import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--results_json", type=str, default="../results/results_summary.json")
-    parser.add_argument("--output_dir", type=str, default="../figures")
+    parser.add_argument(\"--results_json\", type=str, default=\"../results/results_summary.json\")
+    parser.add_argument(\"--logs_dir\", type=str, default=\"../logs\")
+    parser.add_argument(\"--output_dir\", type=str, default=\"../figures\")
     args = parser.parse_args()
 
-    results_path = Path(args.results_json)
-    if not results_path.exists():
-        print(f"ERROR: {results_path} not found. Run 03_collect_results.py first.")
+    res_path = Path(args.results_json)
+    if not res_path.exists():
+        print(f\"ERROR: {res_path} not found. Run 03_collect_results.py first.\")
         return
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir = Path(args.logs_dir)
 
-    runs = load_results(str(results_path))
-    print(f"Loaded {len(runs)} runs. Generating figures → {out_dir}")
+    runs = load_results(str(res_path))
+    print(f\"Plotting results from {len(runs)} runs...\")
 
     plot_pareto(runs, out_dir)
     plot_energy_bar(runs, out_dir)
@@ -361,7 +406,11 @@ def main():
     plot_acceptance_rate(runs, out_dir)
     plot_heatmap(runs, out_dir)
 
-    print("\nAll figures saved.")
+    # New energy spike plot
+    plot_energy_spikes(logs_dir, out_dir)
+
+    print(\"\\nAll figures saved.\")
+
 
 
 if __name__ == "__main__":

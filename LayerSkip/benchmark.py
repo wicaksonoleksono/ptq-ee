@@ -183,6 +183,7 @@ def benchmark(
     generation_config: GenerationConfig,
     seed=None,
     run_id: str = "default_run",
+    meter=None,
 ):
     if generation_config.generation_strategy == "autoregressive":
         generation_strategy: GenerationStrategy = AutoRegressiveGenerationStrategy()
@@ -230,14 +231,16 @@ def benchmark(
             )
         
         # Save to list for backup
+        current_joules = meter.summary()["total_joules"] if meter else 0.0
+        
         progress_entry = {
             "index": i,
-            "input": example.input,
-            "reference": example.output,
             "prediction": response.decoded_prediction,
-            "tps": response.tokens_per_second,
-            "total_time": response.total_time,
+            "tps": round(response.tokens_per_second, 3),
+            "decode_tps": round(response.decode_tps, 3),
             "num_tokens": response.num_tokens_generated,
+            "joules": round(current_joules, 2),
+            "joules_per_token": round(current_joules / response.num_tokens_generated, 4) if response.num_tokens_generated > 0 else 0.0,
             "acceptance_rate": response.generation_strategy_result.acceptance_rate
         }
         progress_data.append(progress_entry)

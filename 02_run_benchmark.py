@@ -262,6 +262,7 @@ def run_benchmark(args):
         generation_config=generation_config,
         seed=42,
         run_id=run_id,  # Pass the ID for organized temp saving
+        meter=meter,     # Pass the energy meter
     )
 
     if torch.cuda.is_available():

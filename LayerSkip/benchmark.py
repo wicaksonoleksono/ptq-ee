@@ -164,6 +164,7 @@ def benchmark(
     benchmark_arguments: BenchmarkArguments,
     generation_config: GenerationConfig,
     seed=None,
+    run_id: str = "default_run",
 ):
     if generation_config.generation_strategy == "autoregressive":
         generation_strategy: GenerationStrategy = AutoRegressiveGenerationStrategy()
@@ -190,7 +191,8 @@ def benchmark(
     )
     
     # Persistent temp results file for long runs
-    temp_save_path = f"benchmark_progress_temp_{os.getpid()}.json"
+    # Naming it by run_id makes it easy to find and prevents overwriting different experiments
+    temp_save_path = f"progress_{run_id}.json"
     print(f"[Benchmark] Saving incremental progress to {temp_save_path}")
     progress_data = []
 

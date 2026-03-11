@@ -249,10 +249,8 @@ def run_benchmark(args):
     print(f"[Benchmark] Running {args.task} | {args.generation_strategy} | {args.num_samples} samples ...")
     reset_vram_stats()
     
-    # We need the actual total number of tokens generated to calculate J/token accurately.
-    # The benchmark() function in LayerSkip/benchmark.py doesn't return the total token count directly,
-    # but EvaluationMetrics tracks time_per_token and total_time.
-    # A more robust way is to wrap the generator to count tokens.
+    # Generate a unique run ID for this specific configuration
+    run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
     
     meter.start()
     t_bench_start = time.perf_counter()
@@ -263,6 +261,7 @@ def run_benchmark(args):
         benchmark_arguments=benchmark_arguments,
         generation_config=generation_config,
         seed=42,
+        run_id=run_id,  # Pass the ID for organized temp saving
     )
 
     if torch.cuda.is_available():

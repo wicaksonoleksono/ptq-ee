@@ -71,33 +71,18 @@
       "num_samples": 200,
       "primary_metric": "rouge_l",
       "type": "generation"
-    },
-    "xsum_summarization": {
-      "dataset": "xsum_summarization",
-      "num_samples": 200,
-      "primary_metric": "rouge_l",
-      "type": "generation"
-    },
-    "human_eval": {
-      "dataset": "human_eval",
-      "num_samples": 164,
-      "primary_metric": "exact_match",
-      "type": "generation"
     }
   },
 
   "eval_tasks_lm_harness": {
-    "hellaswag": { "num_samples": 500, "metric": "accuracy", "type": "classification" },
-    "arc_challenge": { "num_samples": 300, "metric": "accuracy", "type": "classification" },
-    "mmlu": { "num_samples": 285, "metric": "accuracy", "type": "classification" },
-    "gsm8k": { "num_samples": 200, "metric": "exact_match", "type": "generation" }
+    "mmlu": { "num_samples": 200, "metric": "accuracy", "type": "classification" }
   },
 
   "layerskip_sweep": {
     "exit_layers": [10, 20, 30, 40],
     "num_speculations": [4, 6, 8],
     "sweep_dataset": "cnn_dm_summarization",
-    "sweep_num_samples": 50
+    "sweep_num_samples": 1
   },
 
   "paths": {

@@ -49,9 +49,10 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         num_prefill_tokens = input_ids.shape[1]
         output_ids: List[int] = []
         
-        # GRANULAR AUDIT LOG
-        # This will store { "token": id, "layer": exit_layer, "origin": str, "timestamp": float }
-        token_audit_log: List[Dict] = []
+        # AUDIT LOGS
+        exit_layers_list: List[int] = []        # PER TOKEN
+        token_origins_list: List[int] = []      # PER TOKEN
+        speculation_audit_list: List[Dict] = [] # PER STEP: {draft, truth, accepted}
         
         acceptance_rates_list: List[float] = [] 
         
@@ -71,6 +72,8 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 past_key_values,
                 number_of_matches,
                 num_speculations,
+                draft_ids_step,  # What the draft guessed
+                truth_ids_step   # What the model actually chose
             ) = self.single_step_speculation(
                 model=model,
                 input_ids_list=input_ids_list,
@@ -93,16 +96,19 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 streamer=streamer,
             )
             
-            # Record per-token origins and layers into the audit log
-            step_timestamp = time.time()
+            # Record per-token origins and layers
             for idx, t_id in enumerate(output_ids_step):
                 is_draft = idx < number_of_matches
-                token_audit_log.append({
-                    "token_id": int(t_id),
-                    "exit_layer": int(generation_config.exit_layer if is_draft else num_layers),
-                    "origin": "draft" if is_draft else "verification",
-                    "timestamp": step_timestamp
-                })
+                exit_layers_list.append(int(generation_config.exit_layer if is_draft else num_layers))
+                token_origins_list.append(1 if is_draft else 0)
+
+            # Record per-step audit (The Truth Table)
+            speculation_audit_list.append({
+                "step": calls,
+                "draft_tokens": [int(t) for t in draft_ids_step],
+                "truth_tokens": [int(t) for t in truth_ids_step],
+                "accepted_count": int(number_of_matches)
+            })
 
             if num_speculations > 0:
                 acceptance_rates_list.append(float(number_of_matches) / num_speculations)
@@ -123,7 +129,8 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 if eos_token_id in output_ids:
                     idx = output_ids.index(eos_token_id)
                     output_ids = output_ids[:idx]
-                    token_audit_log = token_audit_log[:idx]
+                    exit_layers_list = exit_layers_list[:idx]
+                    token_origins_list = token_origins_list[:idx]
                     eos_found = True
                     break
             if eos_found: break
@@ -133,12 +140,12 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
             predicted_tokens=output_ids,
             acceptance_rate=float(total_draft_matches) / total_generations if total_generations > 0 else 0.0,
             acceptance_rates=acceptance_rates_list,
-            exit_layers=[log["exit_layer"] for log in token_audit_log],
-            token_origins=[1 if log["origin"]=="draft" else 0 for log in token_audit_log],
+            exit_layers=exit_layers_list,
+            token_origins=token_origins_list,
+            speculation_audit=speculation_audit_list,
             prefill_time=prefill_time,
             decode_time=time.time() - decode_start_time if decode_start_time > 0 else 0.0,
             num_prefill_tokens=num_prefill_tokens,
-            # Pass the full audit log back if needed (or we can reconstruct it from exit_layers)
         )
 
     def single_step_speculation(
@@ -167,6 +174,7 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
             draft_probabilities: List[torch.Tensor] = []
         exit_query_cache = None
         
+        # 1. Draft Loop
         for _ in range(num_speculations):
             draft_result = forward_early(model, draft_input_ids, past_key_values, exit_layer, exit_query_cache)
             past_key_values = draft_result.past_key_values
@@ -185,6 +193,7 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         draft_output_ids_tensor = torch.tensor(draft_output_ids).unsqueeze(0).to(input_ids)
         prefill_token_ids = torch.cat([input_ids, draft_output_ids_tensor], dim=-1)
 
+        # 2. Verification Loop
         verify_results = forward_remainder(model, prefill_token_ids.int(), past_key_values, exit_layer, exit_query_cache)
         logits = verify_results.logits
         if logits_processors:
@@ -194,14 +203,14 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         verification_logits = logits[:, prompt_length - 1 :, :]
         verified_tokens, verified_probabilities = decode_next_token(logits=verification_logits, sample=sample, temperature=temperature, top_k=top_k, top_p=top_p)
 
+        # 3. Match Checking
+        number_of_matches = 0
         if not sample:
-            number_of_matches = 0
             for i in range(draft_output_ids_tensor.numel()):
                 if draft_output_ids[i] == verified_tokens[0, i]:
                     number_of_matches += 1
                 else: break
         else:
-            number_of_matches = 0
             rand = torch.rand_like(draft_output_ids_tensor, dtype=torch.float)
             for i in range(draft_output_ids_tensor.numel()):
                 if rand[0, i] < min(1, verified_probabilities[i, draft_output_ids[i]].item() / draft_probabilities[i][0, draft_output_ids[i]].item()):
@@ -219,4 +228,12 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
             past_key_values, len(input_ids_list) + len(output_ids) + len(new_output_ids) - 1
         )
 
-        return (input_ids, new_output_ids, past_key_values, number_of_matches, draft_output_ids_tensor.numel())
+        return (
+            input_ids, 
+            new_output_ids, 
+            past_key_values, 
+            number_of_matches, 
+            draft_output_ids_tensor.numel(),
+            draft_output_ids,      # Return draft guesses
+            verified_tokens[0].tolist() # Return truth tokens (up to T_d)
+        )

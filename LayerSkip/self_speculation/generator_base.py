@@ -21,6 +21,8 @@ class GenerationStrategyResult:
     acceptance_rates: Optional[List[float]] = None # Changed to float ratio per step
     exit_layers: Optional[List[int]] = None       # EXIT LAYER FOR EVERY GENERATED TOKEN
     token_origins: Optional[List[int]] = None     # 0=Verified, 1=DraftAccepted FOR EVERY TOKEN
+    # NEW: Detailed record of draft vs verified tokens per step
+    speculation_audit: Optional[List[Dict]] = None 
     prefill_time: float = 0.0
     decode_time: float = 0.0
     num_prefill_tokens: int = 0

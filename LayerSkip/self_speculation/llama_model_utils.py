@@ -298,13 +298,11 @@ def forward_remainder(
         num_tokens_to_generate = 0
 
     # Check full past length (how many tokens have been processed by the FULL model)
-    # If the cache has all layers, then it's a "full" cache.
-    # But in the verification step, layers exit_layer..end are usually shorter or empty.
-    # We use DynamicCache.get_seq_length() which typically looks at the first layer.
-    # For full_past_key_values_length, we need to know how many tokens the LATE layers have seen.
-    if len(past_key_values.key_cache) > exit_layer and past_key_values.key_cache[exit_layer] is not None:
-        full_past_key_values_length = past_key_values.key_cache[exit_layer].shape[-2]
-    else:
+    # Use get_seq_length(layer_idx) if available, otherwise fallback to 0.
+    # We want to know how many tokens the LATE layers have seen.
+    try:
+        full_past_key_values_length = past_key_values.get_seq_length()
+    except Exception:
         full_past_key_values_length = 0
 
     # For the remaining layers, the total sequence length after this pass will be:

@@ -6,7 +6,7 @@
 #
 
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 
 import colorama
 import torch
@@ -49,13 +49,13 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         num_prefill_tokens = input_ids.shape[1]
         output_ids: List[int] = []
         
-        # New Detailed Metadata Lists
-        acceptance_rates_list: List[float] = [] # Float ratio per step
-        exit_layers_list: List[int] = []        # PER TOKEN: layer index (early or final)
-        token_origins_list: List[int] = []      # PER TOKEN: 0=Full, 1=DraftAccepted
+        # GRANULAR AUDIT LOG
+        # This will store { "token": id, "layer": exit_layer, "origin": str, "timestamp": float }
+        token_audit_log: List[Dict] = []
+        
+        acceptance_rates_list: List[float] = [] 
         
         num_layers = model.config.num_hidden_layers
-
         calls: int = 0
         total_draft_matches = 0
         total_generations = 0
@@ -93,23 +93,20 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 streamer=streamer,
             )
             
-            # 1. Acceptance rate for THIS step
+            # Record per-token origins and layers into the audit log
+            step_timestamp = time.time()
+            for idx, t_id in enumerate(output_ids_step):
+                is_draft = idx < number_of_matches
+                token_audit_log.append({
+                    "token_id": int(t_id),
+                    "exit_layer": int(generation_config.exit_layer if is_draft else num_layers),
+                    "origin": "draft" if is_draft else "verification",
+                    "timestamp": step_timestamp
+                })
+
             if num_speculations > 0:
                 acceptance_rates_list.append(float(number_of_matches) / num_speculations)
-            else:
-                acceptance_rates_list.append(0.0)
             
-            # 2. Origin & Exit Layer FOR EACH TOKEN in this step
-            # First `number_of_matches` tokens were from the early exit
-            for _ in range(number_of_matches):
-                exit_layers_list.append(generation_config.exit_layer)
-                token_origins_list.append(1) # Draft Accepted
-            
-            # The last token in the step always comes from the full model
-            exit_layers_list.append(num_layers)
-            token_origins_list.append(0) # Verified/Correction
-            
-            # Update global output_ids
             output_ids.extend(output_ids_step)
             
             if calls == 0:
@@ -120,32 +117,28 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
             total_draft_matches += number_of_matches
             total_generations += num_speculations
             
-            # Check EOS and crop metadata accordingly
+            # EOS Handling
             eos_found = False
             for eos_token_id in eos_token_ids:
                 if eos_token_id in output_ids:
                     idx = output_ids.index(eos_token_id)
                     output_ids = output_ids[:idx]
-                    exit_layers_list = exit_layers_list[:idx]
-                    token_origins_list = token_origins_list[:idx]
+                    token_audit_log = token_audit_log[:idx]
                     eos_found = True
                     break
-            
-            if eos_found:
-                break
-                
-            if stopping_criteria and stopping_criteria(input_ids, None):
-                break
+            if eos_found: break
+            if stopping_criteria and stopping_criteria(input_ids, None): break
 
         return GenerationStrategyResult(
             predicted_tokens=output_ids,
             acceptance_rate=float(total_draft_matches) / total_generations if total_generations > 0 else 0.0,
             acceptance_rates=acceptance_rates_list,
-            exit_layers=exit_layers_list,
-            token_origins=token_origins_list,
+            exit_layers=[log["exit_layer"] for log in token_audit_log],
+            token_origins=[1 if log["origin"]=="draft" else 0 for log in token_audit_log],
             prefill_time=prefill_time,
             decode_time=time.time() - decode_start_time if decode_start_time > 0 else 0.0,
             num_prefill_tokens=num_prefill_tokens,
+            # Pass the full audit log back if needed (or we can reconstruct it from exit_layers)
         )
 
     def single_step_speculation(
@@ -174,15 +167,8 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
             draft_probabilities: List[torch.Tensor] = []
         exit_query_cache = None
         
-        # 1. Draft loop (Early Exit)
         for _ in range(num_speculations):
-            draft_result = forward_early(
-                model,
-                draft_input_ids,
-                past_key_values,
-                exit_layer,
-                exit_query_cache,
-            )
+            draft_result = forward_early(model, draft_input_ids, past_key_values, exit_layer, exit_query_cache)
             past_key_values = draft_result.past_key_values
             exit_query_cache = draft_result.exit_query_cache
             draft_logits = draft_result.logits
@@ -194,28 +180,12 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
             if sample:
                 draft_probabilities.append(draft_next_prob)
             draft_input_ids = torch.tensor([[draft_next_token]]).to(draft_input_ids)
-            if draft_next_token in eos_token_ids:
-                break
+            if draft_next_token in eos_token_ids: break
 
         draft_output_ids_tensor = torch.tensor(draft_output_ids).unsqueeze(0).to(input_ids)
-        prefill_token_ids = torch.cat(
-            [input_ids, draft_output_ids_tensor],
-            dim=-1,
-        )
+        prefill_token_ids = torch.cat([input_ids, draft_output_ids_tensor], dim=-1)
 
-        if streamer:
-            if isinstance(streamer, SpeculativeTextStreamer):
-                print(colorama.Fore.LIGHTMAGENTA_EX, end="")
-                streamer.put(draft_output_ids_tensor, is_draft=True)
-
-        # 2. Verification loop (Full Model)
-        verify_results = forward_remainder(
-            model,
-            prefill_token_ids.int(),
-            past_key_values,
-            exit_layer,
-            exit_query_cache,
-        )
+        verify_results = forward_remainder(model, prefill_token_ids.int(), past_key_values, exit_layer, exit_query_cache)
         logits = verify_results.logits
         if logits_processors:
             logits = logits_processors(prefill_token_ids, logits)
@@ -224,14 +194,12 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         verification_logits = logits[:, prompt_length - 1 :, :]
         verified_tokens, verified_probabilities = decode_next_token(logits=verification_logits, sample=sample, temperature=temperature, top_k=top_k, top_p=top_p)
 
-        # 3. Acceptance Check
         if not sample:
             number_of_matches = 0
             for i in range(draft_output_ids_tensor.numel()):
                 if draft_output_ids[i] == verified_tokens[0, i]:
                     number_of_matches += 1
-                else:
-                    break
+                else: break
         else:
             number_of_matches = 0
             rand = torch.rand_like(draft_output_ids_tensor, dtype=torch.float)
@@ -242,31 +210,13 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                     verified_tokens[0][number_of_matches] = torch.multinomial(max_fn((verified_probabilities[i, :] - draft_probabilities[i])), num_samples=1).item()
                     break
 
-        # Step results
         new_output_ids = draft_output_ids[:number_of_matches]
         new_output_ids.append(verified_tokens[0][number_of_matches].item())
         
-        # Prepare for next step
         input_ids = verified_tokens[:, number_of_matches : number_of_matches + 1]
         
-        if streamer:
-            if isinstance(streamer, SpeculativeTextStreamer):
-                streamer.delete(len(draft_output_ids_tensor[0, :]))
-                print(colorama.Fore.GREEN, end="")
-                streamer.put(draft_output_ids_tensor[0, : number_of_matches])
-                print(colorama.Style.RESET_ALL, end="")
-                streamer.put(verified_tokens[0][number_of_matches : number_of_matches + 1])
-            else:
-                streamer.put(torch.LongTensor(new_output_ids))
-
         past_key_values = crop_past_key_values(
             past_key_values, len(input_ids_list) + len(output_ids) + len(new_output_ids) - 1
         )
 
-        return (
-            input_ids,
-            new_output_ids, # ONLY THE NEW ONES
-            past_key_values,
-            number_of_matches,
-            draft_output_ids_tensor.numel(),
-        )
+        return (input_ids, new_output_ids, past_key_values, number_of_matches, draft_output_ids_tensor.numel())

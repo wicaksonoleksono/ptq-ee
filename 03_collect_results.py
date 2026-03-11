@@ -1,7 +1,7 @@
 """
 03_collect_results.py
 ---------------------
-Aggregates granular telemetry into run-level averages for plotting.
+Aggregates granular telemetry into run-level averages and PRESERVES full audit trail.
 """
 
 import argparse
@@ -25,14 +25,12 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Load Main Benchmark Files
     benchmark_files = sorted(logs_dir.glob("**/benchmark_*.json"))
     runs_data = []
     for f in benchmark_files:
         data = load_run(f)
         if data: runs_data.append(data)
 
-    # 2. Map Progress Files (The granular sample/token logs)
     progress_files = list(logs_dir.glob("**/progress_*.json"))
     progress_map = {}
     for pf in progress_files:
@@ -41,7 +39,6 @@ def main():
             key = pf.stem.replace("progress_", "")
             progress_map[key] = data
 
-    # 3. Aggregate & Flatten
     rows = []
     for r in runs_data:
         model_name = r.get("model", "").split("/")[-1]
@@ -50,12 +47,11 @@ def main():
         
         prog_samples = progress_map.get(prog_key, [])
         
-        # Calculate Averages across all samples in this run
+        # Aggregates for CSV
         avg_joules = np.mean([s.get("joules_per_token", 0) for s in prog_samples]) if prog_samples else 0
         avg_gpu = np.mean([s.get("gpu_util_percent", 0) for s in prog_samples]) if prog_samples else 0
         avg_cpu = np.mean([s.get("cpu_util_percent", 0) for s in prog_samples]) if prog_samples else 0
         
-        # Extract fields matching what 04_plot_results.py expects
         row = {
             "run_id": r.get("run_id"),
             "model": r.get("model"),
@@ -66,14 +62,14 @@ def main():
             "rouge_l": r.get("results", {}).get("predicted_text", {}).get("rouge-l"),
             "acceptance_rate": r.get("results", {}).get("acceptance_rate", {}).get("mean"),
             "joules_per_token": round(avg_joules, 4),
-            "gpu_util_percent": round(avg_gpu, 1), # Aligned name
-            "cpu_util_percent": round(avg_cpu, 1), # Aligned name
-            "peak_vram_gb": r.get("results", {}).get("peak_vram_gb", 0), # Extract if exists
+            "gpu_util_percent": round(avg_gpu, 1),
+            "cpu_util_percent": round(avg_cpu, 1),
+            "gpu_mem_used_mb": np.mean([s.get("gpu_mem_used_mb", 0) for s in prog_samples]) if prog_samples else 0,
+            # KEEP THE FULL SHIT HERE
             "full_audit_trail": prog_samples 
         }
         rows.append(row)
 
-    # Save outputs
     with open(output_dir / "results_summary.json", "w") as f:
         json.dump({"runs": rows}, f, indent=2)
 
@@ -88,7 +84,7 @@ def main():
             writer.writeheader()
             writer.writerows(csv_rows)
 
-    print(f"Aggregation complete: {len(rows)} methods summarized.")
+    print(f"Aggregation complete. Full token-by-token logs preserved in results_summary.json.")
 
 if __name__ == "__main__":
     main()

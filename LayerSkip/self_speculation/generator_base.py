@@ -18,6 +18,9 @@ import transformers
 class GenerationStrategyResult:
     predicted_tokens: List[int]
     acceptance_rate: Optional[float] = None
+    prefill_time: float = 0.0
+    decode_time: float = 0.0
+    num_prefill_tokens: int = 0
 
 
 @dataclass
@@ -28,6 +31,10 @@ class GenerationResult:
     total_time: float
     time_per_token: float
     tokens_per_second: float
+    prefill_time: float = 0.0
+    decode_time: float = 0.0
+    prefill_tps: float = 0.0
+    decode_tps: float = 0.0
 
 
 @dataclass
@@ -120,6 +127,11 @@ class HuggingfaceLlamaGenerator:
             generation_strategy_result.predicted_tokens
         )
         num_tokens_generated = len(generation_strategy_result.predicted_tokens)
+        
+        pre_t = generation_strategy_result.prefill_time
+        dec_t = generation_strategy_result.decode_time
+        num_pre = generation_strategy_result.num_prefill_tokens
+        
         return GenerationResult(
             generation_strategy_result=generation_strategy_result,
             decoded_prediction=decoded_prediction,
@@ -127,4 +139,8 @@ class HuggingfaceLlamaGenerator:
             total_time=total_time,
             time_per_token=total_time / num_tokens_generated if num_tokens_generated > 0 else None,
             tokens_per_second=num_tokens_generated / total_time,
+            prefill_time=pre_t,
+            decode_time=dec_t,
+            prefill_tps=num_pre / pre_t if pre_t > 0 else 0.0,
+            decode_tps=num_tokens_generated / dec_t if dec_t > 0 else 0.0,
         )

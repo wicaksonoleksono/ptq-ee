@@ -43,12 +43,18 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
 
         input_ids_list = input_ids
         input_ids: torch.Tensor = torch.tensor([input_ids_list]).to(model.device)
+        num_prefill_tokens = input_ids.shape[1]
         output_ids: List[int] = []
 
         calls: int = 0
         total_draft_matches = 0
         total_generations = 0
+        
+        prefill_time = 0.0
+        decode_start_time = 0.0
+        
         while len(output_ids) < generation_config.max_steps:
+            step_start = time.time()
             (
                 input_ids,
                 output_ids,
@@ -76,6 +82,11 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 stopping_criteria=stopping_criteria,
                 streamer=streamer,
             )
+            
+            if calls == 0:
+                prefill_time = time.time() - step_start
+                decode_start_time = time.time()
+                
             calls += 1
             total_draft_matches += number_of_matches
             total_generations += num_speculations
@@ -93,9 +104,15 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 # TODO: when implementing batch size > 1, stop each sample separately?
                 if torch.all(stopping_criteria(input_ids, scores=None)):
                     break
+        
+        decode_time = time.time() - decode_start_time if decode_start_time > 0 else 0.0
+        
         return GenerationStrategyResult(
             predicted_tokens=output_ids,
-            acceptance_rate=total_draft_matches / total_generations,
+            acceptance_rate=total_draft_matches / total_generations if total_generations > 0 else 0.0,
+            prefill_time=prefill_time,
+            decode_time=decode_time,
+            num_prefill_tokens=num_prefill_tokens,
         )
 
     # TODO: remove calls, input_ids_list, rely on generation config

@@ -37,10 +37,16 @@ class AutoRegressiveGenerationStrategy(GenerationStrategy):
         past_key_values = None
 
         input_ids: torch.Tensor = torch.tensor([input_ids]).to(model.device)
+        num_prefill_tokens = input_ids.shape[1]
         output_ids: List[int] = []
 
         exit_query_cache = None
-        for _ in range(generation_config.max_steps):
+        
+        prefill_time = 0.0
+        decode_start_time = 0.0
+        
+        for i in range(generation_config.max_steps):
+            step_start = time.time()
             if generation_config.exit_layer > 0:
                 model_output = forward_early(
                     model,
@@ -55,6 +61,11 @@ class AutoRegressiveGenerationStrategy(GenerationStrategy):
                     input_ids,
                     past_key_values,
                 )
+            
+            if i == 0:
+                prefill_time = time.time() - step_start
+                decode_start_time = time.time()
+            
             logits = model_output.logits
             if logits_processors:
                 logits = logits_processors(input_ids, logits)
@@ -74,7 +85,12 @@ class AutoRegressiveGenerationStrategy(GenerationStrategy):
             # the KV cache (`past_key_values`) to speed up generation.
             input_ids = torch.tensor([[next_token]]).to(input_ids)
 
+        decode_time = time.time() - decode_start_time if decode_start_time > 0 else 0.0
+
         return GenerationStrategyResult(
             predicted_tokens=output_ids,
             acceptance_rate=None,
+            prefill_time=prefill_time,
+            decode_time=decode_time,
+            num_prefill_tokens=num_prefill_tokens,
         )

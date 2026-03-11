@@ -67,6 +67,8 @@ class EvaluationMetrics:
     total_time: Dict[str, Metric]
     time_per_token: Dict[str, Metric]
     tokens_per_second: Dict[str, Metric]
+    prefill_tps: Dict[str, Metric]
+    decode_tps: Dict[str, Metric]
 
     def update(
         self,
@@ -96,6 +98,12 @@ class EvaluationMetrics:
 
         for metric in self.tokens_per_second.values():
             metric.update(torch.tensor(generation_result.tokens_per_second))
+            
+        for metric in self.prefill_tps.values():
+            metric.update(torch.tensor(generation_result.prefill_tps))
+            
+        for metric in self.decode_tps.values():
+            metric.update(torch.tensor(generation_result.decode_tps))
 
     def compute(self) -> Dict[str, torch.Tensor]:
         return {
@@ -118,6 +126,14 @@ class EvaluationMetrics:
             "tokens_per_second": {
                 metric_name: metric.compute().item()
                 for metric_name, metric in self.tokens_per_second.items()
+            },
+            "prefill_tps": {
+                metric_name: metric.compute().item()
+                for metric_name, metric in self.prefill_tps.items()
+            },
+            "decode_tps": {
+                metric_name: metric.compute().item()
+                for metric_name, metric in self.decode_tps.items()
             },
         }
 
@@ -155,6 +171,8 @@ class EvaluationMetrics:
             total_time={"mean": Mean()},
             time_per_token={"mean": Mean()},
             tokens_per_second={"mean": Mean()},
+            prefill_tps={"mean": Mean()},
+            decode_tps={"mean": Mean()},
         )
 
 

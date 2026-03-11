@@ -314,6 +314,8 @@ def run_benchmark(args):
         "efficiency_metrics": {
             "tokens_per_second": round(tps, 3),
             "time_per_token_ms": round(ms_per_tok, 3),
+            "prefill_tps": round(metric_result.get("prefill_tps", {}).get("mean", 0.0), 3),
+            "decode_tps": round(metric_result.get("decode_tps", {}).get("mean", 0.0), 3),
             "total_benchmark_time_s": round(bench_time_s, 2),
             "acceptance_rate": round(acceptance_rate, 4) if acceptance_rate else None,
             "peak_vram_gb": round(peak_vram_gb, 3),

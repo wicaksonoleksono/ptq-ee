@@ -18,6 +18,8 @@ import transformers
 class GenerationStrategyResult:
     predicted_tokens: List[int]
     acceptance_rate: Optional[float] = None
+    acceptance_rates: Optional[List[int]] = None  # Number of matches per step
+    exit_layers: Optional[List[int]] = None       # Exits used (if applicable)
     prefill_time: float = 0.0
     decode_time: float = 0.0
     num_prefill_tokens: int = 0

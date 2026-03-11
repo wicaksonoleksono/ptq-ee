@@ -48,6 +48,10 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         input_ids: torch.Tensor = torch.tensor([input_ids_list]).to(model.device)
         num_prefill_tokens = input_ids.shape[1]
         output_ids: List[int] = []
+        
+        # New metrics
+        acceptance_rates_list: List[int] = []
+        exit_layers_list: List[int] = []
 
         calls: int = 0
         total_draft_matches = 0
@@ -86,6 +90,13 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 streamer=streamer,
             )
             
+            # Log metrics for this step
+            acceptance_rates_list.append(number_of_matches)
+            # In self-speculation, the "exit" happens at exit_layer for drafts, 
+            # and full model (last layer) for verification. 
+            # We record the exit_layer configured.
+            exit_layers_list.append(generation_config.exit_layer)
+            
             if calls == 0:
                 prefill_time = time.time() - step_start
                 decode_start_time = time.time()
@@ -110,6 +121,8 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         return GenerationStrategyResult(
             predicted_tokens=output_ids,
             acceptance_rate=total_draft_matches / total_generations if total_generations > 0 else 0.0,
+            acceptance_rates=acceptance_rates_list,
+            exit_layers=exit_layers_list,
             prefill_time=prefill_time,
             decode_time=time.time() - decode_start_time if decode_start_time > 0 else 0.0,
             num_prefill_tokens=num_prefill_tokens,

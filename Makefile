@@ -178,10 +178,17 @@ plot: dirs
 	@echo "========================================"
 	python 04_plot_results.py --results_json ./results/results_summary.json --output_dir ./figures
 
+plot-details: dirs
+	@echo "========================================"
+	@echo "Phase 6: Generating detailed speculation figures"
+	@echo "========================================"
+	# Looks in current dir where progress_*.json files are usually generated
+	python 05_plot_speculation_details.py --logs_dir . --output_dir ./figures
+
 # ---------------------------------------------------------------------------
 # Full pipeline — 13B × 5 methods × 2 strategies × 2 tasks = 20 benchmark runs
 # ---------------------------------------------------------------------------
-pipeline: download quantize-all benchmark-all collect plot
+pipeline: download quantize-all benchmark-all collect plot plot-details
 	@echo ""
 	@echo "========================================"
 	@echo "Pipeline complete!"

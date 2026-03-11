@@ -291,11 +291,9 @@ def forward_remainder(
     # Early layers (0..exit_layer-1) have cache from forward_early
     early_past_length = past_key_values.get_seq_length()  # uses layer 0
 
-    # Late layers (exit_layer..end) may have a DIFFERENT cache length (or 0)
-    if exit_layer < len(past_key_values.key_cache) and past_key_values.key_cache[exit_layer].numel() > 0:
-        late_past_length = past_key_values.get_seq_length(exit_layer)
-    else:
-        late_past_length = 0
+    # Late layers (exit_layer..end) may have a DIFFERENT cache length (or 0).
+    # get_seq_length(layer_idx) returns 0 if that layer has no cache entries.
+    late_past_length = past_key_values.get_seq_length(exit_layer)
 
     # New tokens that early layers haven't cached yet
     num_tokens_to_generate = max(0, seq_length - early_past_length)

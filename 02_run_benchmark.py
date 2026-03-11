@@ -283,6 +283,11 @@ def run_benchmark(args):
     
     joules_per_token = (energy_summary["total_joules"] / total_tokens_est) if total_tokens_est > 0 else 0.0
 
+    # Calculate final averages for efficiency
+    tps = metric_result.get("tokens_per_second", {}).get("mean", 0.0)
+    ms_per_tok = metric_result.get("time_per_token", {}).get("mean", 0.0) * 1000
+    acceptance_rate = metric_result.get("acceptance_rate", {}).get("mean", None)
+
     # Build output JSON
     run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
     result = {

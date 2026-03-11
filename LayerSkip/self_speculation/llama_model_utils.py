@@ -160,13 +160,9 @@ def forward(
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
 
-    seq_length_with_past = seq_length
-    past_key_values_length = 0
-
-    if past_key_values is not None:
-        past_key_values_length = past_key_values[0][0].shape[2]
-        seq_length_with_past = seq_length_with_past + past_key_values_length
     past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(past_key_values)
+    past_key_values_length = past_key_values.get_seq_length()
+    seq_length_with_past = seq_length + past_key_values_length
 
     position_ids = torch.arange(
         past_key_values_length,
@@ -175,6 +171,8 @@ def forward(
         device=device,
     )
     position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+    cache_position = torch.arange(past_key_values_length, past_key_values_length + seq_length, device=device)
+    
     attention_mask = input_ids.new_ones(
         (batch_size, seq_length_with_past),
         dtype=torch.bool,
@@ -189,23 +187,25 @@ def forward(
     )
 
     hidden_states = inputs_embeds
+    position_embeddings = model.model.rotary_emb(hidden_states, position_ids)
     for decoder_layer in model.model.layers:
-        hidden_states, past_key_values = decoder_layer(
+        layer_outputs = decoder_layer(
             hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            past_key_value=past_key_values,
-            output_attentions=False,
+            past_key_values=past_key_values,
             use_cache=True,
-            padding_mask=None,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
         )
+        hidden_states = layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
 
-    past_key_values = past_key_values.to_legacy_cache()
+    past_key_values_legacy = past_key_values.to_legacy_cache()
     hidden_states = model.model.norm(hidden_states)
     logits = model.lm_head(hidden_states)
 
     return ForwardResult(
-        logits=logits, past_key_values=past_key_values
+        logits=logits, past_key_values=past_key_values_legacy
     )
 
 
@@ -220,13 +220,9 @@ def forward_early(
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
 
-    seq_length_with_past = seq_length
-    past_key_values_length = 0
-
-    if past_key_values is not None:
-        past_key_values_length = past_key_values[0][0].shape[2]
-        seq_length_with_past = seq_length_with_past + past_key_values_length
     past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(past_key_values)
+    past_key_values_length = past_key_values.get_seq_length()
+    seq_length_with_past = seq_length + past_key_values_length
 
     position_ids = torch.arange(
         past_key_values_length,
@@ -235,6 +231,8 @@ def forward_early(
         device=device,
     )
     position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+    cache_position = torch.arange(past_key_values_length, past_key_values_length + seq_length, device=device)
+
     attention_mask = input_ids.new_ones(
         (batch_size, seq_length_with_past),
         dtype=torch.bool,
@@ -249,18 +247,20 @@ def forward_early(
     )
 
     hidden_states = inputs_embeds
+    position_embeddings = model.model.rotary_emb(hidden_states, position_ids)
     for decoder_layer in model.model.layers[:exit_layer]:
-        hidden_states, past_key_values = decoder_layer(
+        layer_outputs = decoder_layer(
             hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            past_key_value=past_key_values,
-            output_attentions=False,
+            past_key_values=past_key_values,
             use_cache=True,
-            padding_mask=None,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
         )
+        hidden_states = layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
 
-    past_key_values = past_key_values.to_legacy_cache()
+    past_key_values_legacy = past_key_values.to_legacy_cache()
 
     # next_cache = next_decoder_cache
     if exit_query_cache is None:
@@ -272,7 +272,7 @@ def forward_early(
 
     logits = model.lm_head(hidden_states)
     return ForwardResult(
-        logits=logits, past_key_values=past_key_values, exit_query_cache=exit_query_cache
+        logits=logits, past_key_values=past_key_values_legacy, exit_query_cache=exit_query_cache
     )
 
 
@@ -287,25 +287,17 @@ def forward_remainder(
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
     num_tokens_to_generate: int = 1
-    seq_length_with_past = seq_length
-    draft_past_key_values_length: int = 0
-    full_past_key_values_length: int = 0
-
-    if past_key_values is not None and past_key_values[0] is not None:
-        # it's okay to use the first layer because the draft model necessairly computes it
-        draft_past_key_values_length = past_key_values[0][0].shape[2]
-        # the total sequence length is the past key values since that includes the draft tokens
-
-        # the last layer should not have been skipped, we can get this to check how many of the tokens have gone through full
-        # verification
-        if len(past_key_values) == len(model.model.layers):
-            full_past_key_values_length = past_key_values[-1][0].shape[2]
-        else:
-            # we have not done a full pass yet so the history is 0
-            full_past_key_values_length = 0
-
-        seq_length_with_past = num_tokens_to_generate + draft_past_key_values_length
+    
     past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(past_key_values)
+    draft_past_key_values_length = past_key_values.get_seq_length()
+    
+    # Check full past length
+    if len(past_key_values) == len(model.model.layers):
+        full_past_key_values_length = draft_past_key_values_length
+    else:
+        full_past_key_values_length = 0
+
+    seq_length_with_past = num_tokens_to_generate + draft_past_key_values_length
 
     inputs_embeds = model.model.embed_tokens(input_ids)
 
@@ -316,6 +308,8 @@ def forward_remainder(
         device=device,
     )
     position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+    cache_position = torch.arange(full_past_key_values_length, seq_length_with_past, device=device)
+
     attention_mask = input_ids.new_ones(
         (batch_size, seq_length_with_past),
         dtype=torch.bool,
@@ -333,59 +327,56 @@ def forward_remainder(
         attention_mask,
         (batch_size, seq_length),
         inputs_embeds,
-        full_past_key_values_length,  # we have no past for the full model
+        full_past_key_values_length,
     )
 
-    next_decoder_cache = []
     hidden_states = inputs_embeds
-    # TODO simplify
     full_hidden_states: Optional[torch.FloatTensor] = None
+    early_position_embeddings = model.model.rotary_emb(hidden_states[:, -num_tokens_to_generate:], position_ids[:, -num_tokens_to_generate:])
+    full_position_embeddings = model.model.rotary_emb(hidden_states, position_ids)
+
     for idx, decoder_layer in enumerate(model.model.layers):
         is_early_exit = idx < exit_layer
-        past_key_value = (
-            past_key_values[idx]
-            if (past_key_values is not None and idx < len(past_key_values))
-            else None
-        )
         if is_early_exit:
-            # early hidden states: B x num_gen x C
             early_hidden_states = hidden_states[:, -num_tokens_to_generate:]
             early_position_ids = position_ids[:, -num_tokens_to_generate:]
-            hidden_states, past_key_values = decoder_layer(
+            early_cache_position = cache_position[-num_tokens_to_generate:]
+            
+            layer_outputs = decoder_layer(
                 early_hidden_states,
                 attention_mask=early_attention_mask,
                 position_ids=early_position_ids,
-                past_key_value=past_key_values,
-                output_attentions=False,
+                past_key_values=past_key_values,
                 use_cache=True,
-                padding_mask=None,
+                cache_position=early_cache_position,
+                position_embeddings=early_position_embeddings,
             )
+            hidden_states = layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
         else:
             if full_hidden_states is None and exit_query_cache is not None:
-                # first time seeing the full hidden states, we need to rely on the
-                # query cache
-                # only use if exit query cache exists, if not this is our first call
                 full_hidden_states = torch.cat(
                     [exit_query_cache, hidden_states[:, -num_tokens_to_generate:]],
                     dim=1,
                 )
+                full_position_embeddings = model.model.rotary_emb(full_hidden_states, position_ids)
             else:
-                # we already have seen the fully hidden states we can re-use them now
                 full_hidden_states = hidden_states
-            hidden_states, past_key_values = decoder_layer(
+            
+            layer_outputs = decoder_layer(
                 full_hidden_states,
                 attention_mask=full_attention_mask,
                 position_ids=position_ids,
-                past_key_value=past_key_values,
-                output_attentions=False,
+                past_key_values=past_key_values,
                 use_cache=True,
-                padding_mask=None,
+                cache_position=cache_position,
+                position_embeddings=full_position_embeddings,
             )
+            hidden_states = layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
 
-    past_key_values = past_key_values.to_legacy_cache()
+    past_key_values_legacy = past_key_values.to_legacy_cache()
     hidden_states = model.model.norm(hidden_states)
     logits = model.lm_head(hidden_states)
 
     return ForwardResult(
-        logits=logits, past_key_values=past_key_values, exit_query_cache=exit_query_cache
+        logits=logits, past_key_values=past_key_values_legacy, exit_query_cache=exit_query_cache
     )

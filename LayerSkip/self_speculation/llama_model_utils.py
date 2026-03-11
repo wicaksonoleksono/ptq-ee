@@ -343,6 +343,7 @@ def forward_remainder(
     # Late layers (exit_layer..end) may have a DIFFERENT cache length (or 0).
     # get_seq_length(layer_idx) returns 0 if that layer has no cache entries.
     late_past_length = past_key_values.get_seq_length(exit_layer)
+
     # New tokens that early layers haven't cached yet.
     # We must account for the fact that input_ids starts at late_past_length.
     num_tokens_to_generate = max(0, (late_past_length + seq_length) - early_past_length)
@@ -413,14 +414,6 @@ def forward_remainder(
         if is_early:
             if num_tokens_to_generate > 0:
                 early_hidden = hidden_states[:, -num_tokens_to_generate:]
-                
-                if idx == 0:
-                    print(f"DEBUG: early layer {idx}")
-                    print("early_hidden", early_hidden.shape)
-                    print("early_position_ids", None if early_position_ids is None else early_position_ids.shape, early_position_ids)
-                    print("early_cache_position", None if early_cache_position is None else early_cache_position.shape, early_cache_position)
-                    print("past_key_values is None", past_key_values is None)
-
                 layer_outputs = decoder_layer(
                     early_hidden,
                     attention_mask=early_attention_mask,
@@ -453,16 +446,11 @@ def forward_remainder(
                         full_hidden_states = exit_query_cache
                 else:
                     full_hidden_states = hidden_states
-                
+
                 late_position_embeddings = model.model.rotary_emb(
                     full_hidden_states,
                     late_position_ids,
                 )
-                
-                print(f"DEBUG: first late layer {idx}")
-                print("full_hidden_states", full_hidden_states.shape)
-                print("late_position_ids", None if late_position_ids is None else late_position_ids.shape, late_position_ids)
-                print("late_cache_position", None if late_cache_position is None else late_cache_position.shape, late_cache_position)
 
             layer_outputs = decoder_layer(
                 full_hidden_states,
@@ -483,12 +471,6 @@ def forward_remainder(
     )
     final_hidden = model.model.norm(final_hidden)
     logits = model.lm_head(final_hidden)
-    
-    # Debug prints as requested
-    print("final_hidden", final_hidden.shape)
-    print("late_position_ids", None if late_position_ids is None else late_position_ids.shape, late_position_ids)
-    print("late_cache_position", None if late_cache_position is None else late_cache_position.shape, late_cache_position)
-    print("past_key_values is None", past_key_values is None)
 
     return ForwardResult(
         logits=logits,

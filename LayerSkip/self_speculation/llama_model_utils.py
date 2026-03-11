@@ -282,43 +282,59 @@ def forward_remainder(
     input_ids: torch.Tensor,
     past_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]],
     exit_layer: int,
-    exit_query_cache: Optional[List[torch.Tensor]],
+    exit_query_cache: Optional[torch.Tensor],
 ) -> ForwardResult:
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
-    num_tokens_to_generate: int = 1
     
     past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(past_key_values)
+    # The draft cache length is what we have from forward_early
     draft_past_key_values_length = past_key_values.get_seq_length()
     
-    # Check full past length
-    if len(past_key_values) == len(model.model.layers):
-        full_past_key_values_length = draft_past_key_values_length
+    # num_tokens_to_generate is the number of tokens that are NOT yet in the draft cache
+    num_tokens_to_generate = seq_length - draft_past_key_values_length
+    if num_tokens_to_generate < 0:
+        # Should not happen in normal speculative decoding flow
+        num_tokens_to_generate = 0
+
+    # Check full past length (how many tokens have been processed by the FULL model)
+    # If the cache has all layers, then it's a "full" cache.
+    # But in the verification step, layers exit_layer..end are usually shorter or empty.
+    # We use DynamicCache.get_seq_length() which typically looks at the first layer.
+    # For full_past_key_values_length, we need to know how many tokens the LATE layers have seen.
+    if len(past_key_values.key_cache) > exit_layer and past_key_values.key_cache[exit_layer] is not None:
+        full_past_key_values_length = past_key_values.key_cache[exit_layer].shape[-2]
     else:
         full_past_key_values_length = 0
 
-    seq_length_with_past = num_tokens_to_generate + draft_past_key_values_length
-
+    # For the remaining layers, the total sequence length after this pass will be:
+    seq_length_with_past = seq_length + full_past_key_values_length
+    
     inputs_embeds = model.model.embed_tokens(input_ids)
 
+    # position_ids must match input_ids length
     position_ids = torch.arange(
         full_past_key_values_length,
-        seq_length_with_past,
+        full_past_key_values_length + seq_length,
         dtype=torch.long,
         device=device,
     )
     position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-    cache_position = torch.arange(full_past_key_values_length, seq_length_with_past, device=device)
+    cache_position = torch.arange(full_past_key_values_length, full_past_key_values_length + seq_length, device=device)
 
     attention_mask = input_ids.new_ones(
         (batch_size, seq_length_with_past),
         dtype=torch.bool,
     )
+    
+    # We need a mask for the "early" exit layers (processing num_tokens_to_generate)
+    # and a mask for the "full" model layers (processing seq_length tokens).
+    
     early_attention_mask = _prepare_decoder_attention_mask(
         model,
         attention_mask,
         (batch_size, num_tokens_to_generate),
-        inputs_embeds,
+        inputs_embeds[:, -num_tokens_to_generate:],
         draft_past_key_values_length,
     )
 

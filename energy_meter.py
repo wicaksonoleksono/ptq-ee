@@ -1,12 +1,14 @@
 """
 energy_meter.py
 ---------------
-Updated to capture both Compute Util (%) and Memory Usage (MB).
+Hardware telemetry for GPU (NVML) and CPU (psutil).
+Captures Watts, Joules, Utilization %, and VRAM usage.
 """
 
 import threading
 import time
 import os
+import numpy as np
 
 try:
     import pynvml
@@ -112,4 +114,19 @@ class EnergyMeter:
     @property
     def avg_power_watts(self): return np.mean([s[1] for s in self._samples]) if self._samples else 0.0
 
-import numpy as np
+    @property
+    def peak_power_watts(self): return max([s[1] for s in self._samples]) if self._samples else 0.0
+
+    def summary(self) -> dict:
+        return {
+            "total_joules": round(self.joules, 3),
+            "avg_power_watts": round(self.avg_power_watts, 2),
+            "avg_gpu_util_percent": round(self.avg_gpu_util, 1),
+            "avg_gpu_mem_mb": round(self.avg_gpu_mem_mb, 1),
+            "peak_gpu_mem_mb": round(self.peak_gpu_mem_mb, 1),
+            "avg_cpu_util_percent": round(self.avg_cpu_util, 1),
+            "peak_power_watts": round(self.peak_power_watts, 2),
+            "num_power_samples": len(self._samples),
+            "pynvml_available": _PYNVML_AVAILABLE and self._handle is not None,
+            "psutil_available": _PSUTIL_AVAILABLE,
+        }

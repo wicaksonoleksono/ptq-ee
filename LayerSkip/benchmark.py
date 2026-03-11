@@ -188,26 +188,56 @@ def benchmark(
         data_path=benchmark_arguments.data_path,
         template=benchmark_arguments.template,
     )
+    
+    # Persistent temp results file for long runs
+    temp_save_path = f"benchmark_progress_temp_{os.getpid()}.json"
+    print(f"[Benchmark] Saving incremental progress to {temp_save_path}")
+    progress_data = []
+
     metrics = EvaluationMetrics.build_metrics()
     for i, example in enumerate(tqdm(evaluation_set)):
         response: GenerationResult = generator.generate(
             prompt=example.input,
             generation_config=generation_config,
         )
-        print(f"[Prompt]:\n{example.input}")
-        print(f"[Reference Response]:\n{example.output}")
-        print(f"[Model Response]:\n{response.decoded_prediction}")
+        print(f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done.")
+        # print(f"[Prompt]:\n{example.input}")
+        # print(f"[Reference Response]:\n{example.output}")
+        # print(f"[Model Response]:\n{response.decoded_prediction}")
         if response.generation_strategy_result.acceptance_rate is not None:
             print(
-                f"[Acceptance Rate]: {response.generation_strategy_result.acceptance_rate}"
+                f"[Acceptance Rate]: {response.generation_strategy_result.acceptance_rate:.4f}"
             )
+        
+        # Save to list for backup
+        progress_entry = {
+            "index": i,
+            "input": example.input,
+            "reference": example.output,
+            "prediction": response.decoded_prediction,
+            "tps": response.tokens_per_second,
+            "total_time": response.total_time,
+            "num_tokens": response.num_tokens_generated,
+            "acceptance_rate": response.generation_strategy_result.acceptance_rate
+        }
+        progress_data.append(progress_entry)
+        
+        # Every 5 samples, write to disk
+        if (i + 1) % 5 == 0:
+            with open(temp_save_path, "w") as f:
+                json.dump(progress_data, f, indent=2)
+
         if response.num_tokens_generated == 0:
             print("Skipping metrics of empty generation")
-            # TBD: print stats of emprty generations
             continue
         metrics.update(example, response)
 
     metric_result = metrics.compute()
+    
+    # Final save and cleanup
+    with open(temp_save_path, "w") as f:
+        json.dump(progress_data, f, indent=2)
+    print(f"[Benchmark] Completed. All {len(progress_data)} samples saved to temp file.")
 
     return metric_result
 

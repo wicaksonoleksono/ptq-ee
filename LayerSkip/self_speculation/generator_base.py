@@ -7,7 +7,7 @@
 
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import torch
 

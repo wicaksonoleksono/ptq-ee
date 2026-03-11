@@ -108,6 +108,46 @@ def plot_exit_layers(progress_files, out_dir):
     plt.close(fig)
     print(f"  Saved: {path}")
 
+def plot_token_timeline(progress_files, out_dir):
+    """
+    Plots a scatter/line timeline of which layer produced each token 
+    for the first 100 tokens of a representative sample.
+    """
+    fig, ax = plt.subplots(figsize=(12, 5))
+    
+    for p_file in progress_files:
+        with open(p_file) as f:
+            data = json.load(f)
+        if not data or len(data) == 0: continue
+        
+        # Pick the first sample
+        sample = data[0]
+        layers = sample.get("exit_layers_per_token")
+        if not layers: continue
+        
+        # Limit to first 100 tokens for readability
+        layers = layers[:100]
+        x = np.arange(len(layers))
+        
+        ptq = get_ptq_method(p_file.name)
+        color = PTQ_COLORS.get(ptq, "#999")
+        
+        ax.step(x, layers, where='post', label=p_file.stem.replace("progress_", "")[:25], 
+                color=color, alpha=0.8, linewidth=1.5)
+
+    ax.set_xlabel("Token Index in Sequence")
+    ax.set_ylabel("Exit Layer Index")
+    ax.set_title("Per-Token Exit Layer Timeline (Representative Sample)")
+    ax.grid(True, linestyle="--", alpha=0.3)
+    # Put legend outside
+    ax.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1, 1))
+
+    path = out_dir / "per_token_exit_timeline.png"
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--logs_dir", type=str, default=".")
@@ -120,7 +160,8 @@ def main():
     if progress_files:
         plot_acceptance_distribution(progress_files, out_dir)
         plot_exit_layers(progress_files, out_dir)
-        print("Detailed speculation plots generated.")
+        plot_token_timeline(progress_files, out_dir)
+        print("Detailed speculation plots (including Per-Token Timeline) generated.")
 
 if __name__ == "__main__":
     main()

@@ -377,6 +377,50 @@ def plot_utility_bar(runs: list, out_dir: Path):
 
 
 # ---------------------------------------------------------------------------
+# Figure 8: Acceptance Sweep (Acceptance Rate vs Exit Layer)
+# ---------------------------------------------------------------------------
+
+def plot_acceptance_sweep(runs: list, out_dir: Path):
+    from collections import defaultdict
+    # Group AR by (ptq_method, exit_layer)
+    data = defaultdict(lambda: defaultdict(list))
+    
+    for r in runs:
+        if r.get("strategy") == "self_speculative":
+            ptq = r.get("ptq_method", "fp16")
+            el = r.get("exit_layer")
+            ar = r.get("acceptance_rate")
+            if el is not None and ar is not None:
+                data[ptq][el].append(ar)
+                
+    if not data:
+        print("  [acceptance sweep] No sweep data, skipping.")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    for ptq, layers in sorted(data.items()):
+        sorted_layers = sorted(layers.keys())
+        avg_ar = [np.mean(layers[l]) for l in sorted_layers]
+        
+        color = PTQ_COLORS.get(ptq, "#999")
+        ax.plot(sorted_layers, avg_ar, marker='o', label=ptq, color=color, linewidth=2, markersize=8)
+
+    ax.set_xlabel("Exit Layer Index")
+    ax.set_ylabel("Mean Acceptance Rate")
+    ax.set_title("Quantization Impact on Speculation: Acceptance vs. Exit Layer")
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend()
+
+    path = out_dir / "acceptance_sweep_lines.png"
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def plot_energy_spikes(logs_dir: Path, out_dir: Path):
@@ -447,7 +491,9 @@ def main():
     plot_vram_bar(runs, out_dir)
     plot_speedup_bar(runs, out_dir)
     plot_acceptance_rate(runs, out_dir)
+    plot_acceptance_sweep(runs, out_dir)
     plot_heatmap(runs, out_dir)
+    plot_utility_bar(runs, out_dir)
 
     # New energy spike plot
     plot_energy_spikes(logs_dir, out_dir)

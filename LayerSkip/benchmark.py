@@ -218,25 +218,27 @@ def benchmark(
 
     metrics = EvaluationMetrics.build_metrics()
     for i, example in enumerate(tqdm(evaluation_set)):
-        # Record state before this specific inference
-        joules_before = meter.joules if meter else 0.0
+        # Start meter specifically for this inference
+        if meter: meter.start()
+        
         t_start = time.time()
-
         response: GenerationResult = generator.generate(
             prompt=example.input,
             generation_config=generation_config,
         )
-
-        # Record state after this specific inference
         t_end = time.time()
-        joules_after = meter.joules if meter else 0.0
-
+        
+        # Stop meter immediately after inference
+        if meter: meter.stop()
+        
         duration = t_end - t_start
-        joules_this_sample = joules_after - joules_before
-        avg_watts_this_sample = (joules_this_sample / duration) if duration > 0 else 0.0
+        joules_this_sample = meter.joules if meter else 0.0
+        avg_watts_this_sample = meter.avg_power_watts if meter else 0.0
+        avg_gpu_util = meter.avg_gpu_util if meter else 0.0
+        avg_cpu_util = meter.avg_cpu_util if meter else 0.0
 
         print(
-            f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W)"
+            f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W, GPU: {avg_gpu_util:.1f}%)"
         )
 
         if response.generation_strategy_result.acceptance_rate is not None:

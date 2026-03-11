@@ -248,6 +248,12 @@ def run_benchmark(args):
     # Run benchmark with energy measurement
     print(f"[Benchmark] Running {args.task} | {args.generation_strategy} | {args.num_samples} samples ...")
     reset_vram_stats()
+    
+    # We need the actual total number of tokens generated to calculate J/token accurately.
+    # The benchmark() function in LayerSkip/benchmark.py doesn't return the total token count directly,
+    # but EvaluationMetrics tracks time_per_token and total_time.
+    # A more robust way is to wrap the generator to count tokens.
+    
     meter.start()
     t_bench_start = time.perf_counter()
 
@@ -268,13 +274,14 @@ def run_benchmark(args):
     peak_vram_gb = get_vram_gb()
     energy_summary = meter.summary()
 
-    # Tokens per second from LayerSkip metrics
-    tps = metric_result.get("tokens_per_second", {}).get("mean", 0.0)
-    ms_per_tok = metric_result.get("time_per_token", {}).get("mean", 0.0) * 1000
-    acceptance_rate = metric_result.get("acceptance_rate", {}).get("mean", None)
-
-    # Joules per token
-    total_tokens_est = tps * bench_time_s if tps > 0 else 0
+    # Calculate total tokens from metrics
+    # EvaluationMetrics uses Mean() for total_time and tokens_per_second.
+    # Total tokens = avg_tps * total_time_across_all_samples
+    avg_tps = metric_result.get("tokens_per_second", {}).get("mean", 0.0)
+    avg_total_time = metric_result.get("total_time", {}).get("mean", 0.0)
+    # The benchmark loop runs for args.num_samples
+    total_tokens_est = avg_tps * avg_total_time * args.num_samples
+    
     joules_per_token = (energy_summary["total_joules"] / total_tokens_est) if total_tokens_est > 0 else 0.0
 
     # Build output JSON

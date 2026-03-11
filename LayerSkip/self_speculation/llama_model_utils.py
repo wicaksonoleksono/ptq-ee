@@ -6,7 +6,7 @@
 #
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import transformers
@@ -15,7 +15,7 @@ import transformers
 @dataclass
 class ForwardResult:
     logits: torch.Tensor
-    past_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]]
+    past_key_values: Optional[transformers.cache_utils.DynamicCache]
     exit_query_cache: Optional[List[torch.Tensor]] = None
 
 
@@ -163,24 +163,14 @@ def decode_next_token(
 
 
 def crop_past_key_values(
-    past_key_values: List[Tuple[torch.Tensor, torch.Tensor]],
+    past_key_values: transformers.cache_utils.DynamicCache,
     maximum_length: int,
-) -> List[Tuple[torch.Tensor, torch.Tensor]]:
-    new_past: List[Tuple[torch.Tensor, torch.Tensor]] = []
-    for idx in range(len(past_key_values)):
-        if (
-            past_key_values[idx] is None
-            or past_key_values[idx][0] == []
-            or past_key_values[idx][0] is None
-        ):
-            break
-        new_past.append(
-            (
-                past_key_values[idx][0][:, :, :maximum_length, :],
-                past_key_values[idx][1][:, :, :maximum_length, :],
-            )
-        )
-    past_key_values = tuple(new_past)
+) -> transformers.cache_utils.DynamicCache:
+    if past_key_values is None:
+        return None
+    for i in range(len(past_key_values.key_cache)):
+        past_key_values.key_cache[i] = past_key_values.key_cache[i][..., :maximum_length, :]
+        past_key_values.value_cache[i] = past_key_values.value_cache[i][..., :maximum_length, :]
     return past_key_values
 
 
@@ -190,17 +180,14 @@ def crop_past_key_values(
 def forward(
     model: transformers.LlamaForCausalLM,
     input_ids: torch.Tensor,
-    past_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]],
+    past_key_values: Optional[transformers.cache_utils.DynamicCache],
 ) -> ForwardResult:
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
 
     if past_key_values is None:
         past_key_values = transformers.cache_utils.DynamicCache()
-    else:
-        past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
-            past_key_values
-        )
+    
     past_key_values_length = past_key_values.get_seq_length()
     seq_length_with_past = seq_length + past_key_values_length
 
@@ -244,18 +231,17 @@ def forward(
             layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
         )
 
-    past_key_values_legacy = past_key_values.to_legacy_cache()
     hidden_states = model.model.norm(hidden_states)
     logits = model.lm_head(hidden_states)
 
-    return ForwardResult(logits=logits, past_key_values=past_key_values_legacy)
+    return ForwardResult(logits=logits, past_key_values=past_key_values)
 
 
 # TODO: update forward_early(...) to use transformers' new KV cache implementation rather than legacy.
 def forward_early(
     model: transformers.LlamaForCausalLM,
     input_ids: torch.Tensor,
-    past_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]],
+    past_key_values: Optional[transformers.cache_utils.DynamicCache],
     exit_layer: int,
     exit_query_cache: Optional[List[torch.Tensor]],
 ) -> ForwardResult:
@@ -264,10 +250,7 @@ def forward_early(
 
     if past_key_values is None:
         past_key_values = transformers.cache_utils.DynamicCache()
-    else:
-        past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
-            past_key_values
-        )
+
     past_key_values_length = past_key_values.get_seq_length()
     seq_length_with_past = seq_length + past_key_values_length
 
@@ -311,8 +294,6 @@ def forward_early(
             layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
         )
 
-    past_key_values_legacy = past_key_values.to_legacy_cache()
-
     # next_cache = next_decoder_cache
     if exit_query_cache is None:
         exit_query_cache = hidden_states
@@ -324,7 +305,7 @@ def forward_early(
     logits = model.lm_head(hidden_states)
     return ForwardResult(
         logits=logits,
-        past_key_values=past_key_values_legacy,
+        past_key_values=past_key_values,
         exit_query_cache=exit_query_cache,
     )
 
@@ -332,7 +313,7 @@ def forward_early(
 def forward_remainder(
     model: transformers.LlamaForCausalLM,
     input_ids: torch.Tensor,
-    past_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]],
+    past_key_values: Optional[transformers.cache_utils.DynamicCache],
     exit_layer: int,
     exit_query_cache: Optional[torch.Tensor],
 ) -> ForwardResult:
@@ -341,10 +322,6 @@ def forward_remainder(
 
     if past_key_values is None:
         past_key_values = transformers.cache_utils.DynamicCache()
-    else:
-        past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
-            past_key_values
-        )
 
     # Early layers (0..exit_layer-1) have cache from forward_early
     early_past_length = past_key_values.get_seq_length()  # uses layer 0
@@ -474,7 +451,6 @@ def forward_remainder(
                 layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
             )
 
-    past_key_values_legacy = past_key_values.to_legacy_cache()
     final_hidden = (
         full_hidden_states if full_hidden_states is not None else hidden_states
     )
@@ -483,6 +459,6 @@ def forward_remainder(
 
     return ForwardResult(
         logits=logits,
-        past_key_values=past_key_values_legacy,
+        past_key_values=past_key_values,
         exit_query_cache=exit_query_cache,
     )

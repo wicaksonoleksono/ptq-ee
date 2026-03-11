@@ -40,7 +40,9 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         stopping_criteria: Optional[transformers.StoppingCriteriaList] = None,
         streamer: Optional[transformers.TextStreamer] = None,
     ) -> GenerationStrategyResult:
+        # CRITICAL: Reset cache for every new prompt/item in the benchmark
         past_key_values = None
+        torch.cuda.empty_cache()
 
         input_ids_list = input_ids
         input_ids: torch.Tensor = torch.tensor([input_ids_list]).to(model.device)
@@ -98,21 +100,18 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                     # remove the EOS token id
                     output_ids = output_ids[: output_ids.index(eos_token_id)]
                     eos_found = True
-                    break
+            
             if eos_found:
                 break
-            if stopping_criteria:
-                # TODO: when implementing batch size > 1, stop each sample separately?
-                if torch.all(stopping_criteria(input_ids, scores=None)):
-                    break
-        
-        decode_time = time.time() - decode_start_time if decode_start_time > 0 else 0.0
-        
+                
+            if stopping_criteria and stopping_criteria(input_ids, None):
+                break
+
         return GenerationStrategyResult(
             predicted_tokens=output_ids,
             acceptance_rate=total_draft_matches / total_generations if total_generations > 0 else 0.0,
             prefill_time=prefill_time,
-            decode_time=decode_time,
+            decode_time=time.time() - decode_start_time if decode_start_time > 0 else 0.0,
             num_prefill_tokens=num_prefill_tokens,
         )
 
@@ -124,7 +123,7 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         input_ids_list: List[int],
         output_ids: List[int],
         num_speculations: int,
-        past_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]],
+        past_key_values: Optional[transformers.cache_utils.DynamicCache],
         eos_token_ids: List[int],
         calls: int,
         exit_layer: int,
@@ -132,7 +131,7 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         temperature: Optional[float] = 0.7,
         top_k: Optional[int] = 50,
         top_p: Optional[float] = 0.95,
-        logits_processors: Optional[transformers.generation.logits_process.LogitsProcessorList] = None,
+        logits_processors: Optional[transformers.generation.logits_process.Logits_process.LogitsProcessorList] = None,
         stopping_criteria: Optional[transformers.StoppingCriteriaList] = None,
         streamer: Optional[transformers.TextStreamer] = None
     ):
@@ -199,13 +198,14 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         # first tokens (or first N tokens) are coming from the prompt
         verified_tokens, verified_probabilities = decode_next_token(logits=verification_logits, sample=sample, temperature=temperature, top_k=top_k, top_p=top_p)
 
-        # skip verification of the last token as it is a new token predicted from the main model
-        verified_tokens = verified_tokens.to(prefill_token_ids)
-        verified = draft_output_ids[:, :] == verified_tokens[:, :-1]
-
-        # number of matches is the index of the number of tokens we are accepting from the draft
         if not sample:
-            number_of_matches = ((~(verified)).cumsum(dim=-1) < 1).sum().item()
+            # check where the draft and the verified tokens match
+            number_of_matches = 0
+            for i in range(draft_output_ids.numel()):
+                if draft_output_ids[0, i] == verified_tokens[0, i]:
+                    number_of_matches += 1
+                else:
+                    break
         else:
             number_of_matches = 0
             rand = torch.rand_like(draft_output_ids, dtype=torch.float)

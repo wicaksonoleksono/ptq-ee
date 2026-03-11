@@ -195,9 +195,12 @@ def forward(
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
 
-    past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
-        past_key_values
-    )
+    if past_key_values is None:
+        past_key_values = transformers.cache_utils.DynamicCache()
+    else:
+        past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
+            past_key_values
+        )
     past_key_values_length = past_key_values.get_seq_length()
     seq_length_with_past = seq_length + past_key_values_length
 
@@ -259,9 +262,12 @@ def forward_early(
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
 
-    past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
-        past_key_values
-    )
+    if past_key_values is None:
+        past_key_values = transformers.cache_utils.DynamicCache()
+    else:
+        past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
+            past_key_values
+        )
     past_key_values_length = past_key_values.get_seq_length()
     seq_length_with_past = seq_length + past_key_values_length
 
@@ -333,9 +339,12 @@ def forward_remainder(
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
 
-    past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
-        past_key_values
-    )
+    if past_key_values is None:
+        past_key_values = transformers.cache_utils.DynamicCache()
+    else:
+        past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(
+            past_key_values
+        )
 
     # Early layers (0..exit_layer-1) have cache from forward_early
     early_past_length = past_key_values.get_seq_length()  # uses layer 0

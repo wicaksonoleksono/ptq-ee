@@ -174,12 +174,12 @@ def plot_vram_bar(runs: list, out_dir: Path):
     from collections import defaultdict
     groups = defaultdict(list)
     for r in runs:
-        v = r.get("peak_vram_gb")
+        v = r.get("gpu_mem_used_mb")
         if v and v > 0:
-            groups[r.get("ptq_method", "fp16")].append(v)
+            groups[r.get("ptq_method", "fp16")].append(v / 1024.0) # MB to GB
 
     if not groups:
-        print("  [vram bar] No peak_vram_gb data, skipping.")
+        print("  [vram bar] No gpu_mem_used_mb data, skipping.")
         return
 
     ptq_methods = sorted(groups.keys())
@@ -189,8 +189,8 @@ def plot_vram_bar(runs: list, out_dir: Path):
     fig, ax = plt.subplots(figsize=(8, 5))
     bars = ax.bar(ptq_methods, values, color=colors, edgecolor="black", linewidth=0.6)
     ax.bar_label(bars, fmt="%.1f GB", padding=3, fontsize=9)
-    ax.set_ylabel("Peak GPU Memory (GB)  (lower = better)")
-    ax.set_title("GPU Memory Footprint by PTQ Method")
+    ax.set_ylabel("Avg GPU Memory (GB) used during inference")
+    ax.set_title("VRAM Footprint by PTQ Method")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     path = out_dir / "vram_footprint_bar.png"

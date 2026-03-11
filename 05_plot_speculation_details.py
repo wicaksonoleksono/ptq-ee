@@ -148,6 +148,47 @@ def plot_token_timeline(progress_files, out_dir):
     plt.close(fig)
     print(f"  Saved: {path}")
 
+def plot_hardware_timeline(progress_files, out_dir):
+    """
+    Plots GPU, CPU, and VRAM usage over the course of samples in a run.
+    """
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+    
+    for p_file in progress_files:
+        with open(p_file) as f:
+            data = json.load(f)
+        if not data: continue
+        
+        indices = [s.get("index") for s in data]
+        gpu_utils = [s.get("gpu_util_percent") for s in data]
+        cpu_utils = [s.get("cpu_util_percent") for s in data]
+        vram_mb = [s.get("gpu_mem_used_mb") for s in data]
+        
+        ptq = get_ptq_method(p_file.name)
+        color = PTQ_COLORS.get(ptq, "#999")
+        label = p_file.stem.replace("progress_", "")[:25]
+        
+        ax1.plot(indices, gpu_utils, label=f"{label} (GPU)", color=color, linestyle='-', alpha=0.7)
+        ax1.plot(indices, cpu_utils, label=f"{label} (CPU)", color=color, linestyle='--', alpha=0.4)
+        
+        ax2.plot(indices, vram_mb, label=label, color=color, alpha=0.8)
+
+    ax1.set_ylabel("Utilization %")
+    ax1.set_title("Hardware Utilization Profile (Sample-by-Sample)")
+    ax1.legend(fontsize=6, loc="upper left", bbox_to_anchor=(1, 1))
+    ax1.grid(True, linestyle="--", alpha=0.3)
+
+    ax2.set_ylabel("VRAM Used (MB)")
+    ax2.set_xlabel("Sample Index")
+    ax2.set_title("VRAM Memory Profile")
+    ax2.grid(True, linestyle="--", alpha=0.3)
+
+    path = out_dir / "hardware_profile_timeline.png"
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--logs_dir", type=str, default=".")
@@ -161,7 +202,8 @@ def main():
         plot_acceptance_distribution(progress_files, out_dir)
         plot_exit_layers(progress_files, out_dir)
         plot_token_timeline(progress_files, out_dir)
-        print("Detailed speculation plots (including Per-Token Timeline) generated.")
+        plot_hardware_timeline(progress_files, out_dir)
+        print("Detailed speculation and hardware plots generated.")
 
 if __name__ == "__main__":
     main()

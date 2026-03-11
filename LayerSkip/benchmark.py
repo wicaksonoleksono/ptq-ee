@@ -235,10 +235,11 @@ def benchmark(
         joules_this_sample = meter.joules if meter else 0.0
         avg_watts_this_sample = meter.avg_power_watts if meter else 0.0
         avg_gpu_util = meter.avg_gpu_util if meter else 0.0
+        avg_gpu_mem = meter.avg_gpu_mem_mb if meter else 0.0
         avg_cpu_util = meter.avg_cpu_util if meter else 0.0
 
         print(
-            f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W, GPU: {avg_gpu_util:.1f}%)"
+            f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W, GPU: {avg_gpu_util:.1f}%, VRAM: {avg_gpu_mem:.0f}MB, CPU: {avg_cpu_util:.1f}%)"
         )
 
         if response.generation_strategy_result.acceptance_rate is not None:
@@ -264,8 +265,9 @@ def benchmark(
             "acceptance_rates_per_step": response.generation_strategy_result.acceptance_rates,
             "exit_layers_per_token": response.generation_strategy_result.exit_layers,
             "token_origins_per_token": response.generation_strategy_result.token_origins,
-            "gpu_util_percent": meter.avg_gpu_util if meter else 0.0,
-            "cpu_util_percent": meter.avg_cpu_util if meter else 0.0,
+            "gpu_util_percent": round(avg_gpu_util, 1),
+            "gpu_mem_used_mb": round(avg_gpu_mem, 1),
+            "cpu_util_percent": round(avg_cpu_util, 1),
         }
         progress_data.append(progress_entry)
 

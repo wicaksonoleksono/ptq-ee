@@ -131,7 +131,7 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         temperature: Optional[float] = 0.7,
         top_k: Optional[int] = 50,
         top_p: Optional[float] = 0.95,
-        logits_processors: Optional[transformers.generation.logits_process.Logits_process.LogitsProcessorList] = None,
+        logits_processors: Optional[transformers.generation.logits_process.LogitsProcessorList] = None,
         stopping_criteria: Optional[transformers.StoppingCriteriaList] = None,
         streamer: Optional[transformers.TextStreamer] = None
     ):

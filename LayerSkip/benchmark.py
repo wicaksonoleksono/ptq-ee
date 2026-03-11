@@ -8,6 +8,7 @@
 import datetime
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 import logging
@@ -98,10 +99,10 @@ class EvaluationMetrics:
 
         for metric in self.tokens_per_second.values():
             metric.update(torch.tensor(generation_result.tokens_per_second))
-            
+
         for metric in self.prefill_tps.values():
             metric.update(torch.tensor(generation_result.prefill_tps))
-            
+
         for metric in self.decode_tps.values():
             metric.update(torch.tensor(generation_result.decode_tps))
 
@@ -208,7 +209,7 @@ def benchmark(
         data_path=benchmark_arguments.data_path,
         template=benchmark_arguments.template,
     )
-    
+
     # Persistent temp results file for long runs
     # Naming it by run_id makes it easy to find and prevents overwriting different experiments
     temp_save_path = f"progress_{run_id}.json"
@@ -220,27 +221,29 @@ def benchmark(
         # Record state before this specific inference
         joules_before = meter.joules if meter else 0.0
         t_start = time.time()
-        
+
         response: GenerationResult = generator.generate(
             prompt=example.input,
             generation_config=generation_config,
         )
-        
+
         # Record state after this specific inference
         t_end = time.time()
         joules_after = meter.joules if meter else 0.0
-        
+
         duration = t_end - t_start
         joules_this_sample = joules_after - joules_before
         avg_watts_this_sample = (joules_this_sample / duration) if duration > 0 else 0.0
-        
-        print(f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W)")
-        
+
+        print(
+            f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W)"
+        )
+
         if response.generation_strategy_result.acceptance_rate is not None:
             print(
                 f"[Acceptance Rate]: {response.generation_strategy_result.acceptance_rate:.4f}"
             )
-        
+
         # Save to list for backup
         progress_entry = {
             "index": i,
@@ -250,13 +253,17 @@ def benchmark(
             "duration_s": round(duration, 3),
             "joules_this_sample": round(joules_this_sample, 2),
             "avg_watts_this_sample": round(avg_watts_this_sample, 1),
-            "joules_per_token": round(joules_this_sample / response.num_tokens_generated, 4) if response.num_tokens_generated > 0 else 0.0,
+            "joules_per_token": (
+                round(joules_this_sample / response.num_tokens_generated, 4)
+                if response.num_tokens_generated > 0
+                else 0.0
+            ),
             "acceptance_rate": response.generation_strategy_result.acceptance_rate,
             "gpu_util_percent": meter.avg_gpu_util if meter else 0.0,
-            "cpu_util_percent": meter.avg_cpu_util if meter else 0.0
+            "cpu_util_percent": meter.avg_cpu_util if meter else 0.0,
         }
         progress_data.append(progress_entry)
-        
+
         # Every 5 samples, write to disk
         if (i + 1) % 5 == 0:
             with open(temp_save_path, "w") as f:
@@ -268,11 +275,13 @@ def benchmark(
         metrics.update(example, response)
 
     metric_result = metrics.compute()
-    
+
     # Final save and cleanup
     with open(temp_save_path, "w") as f:
         json.dump(progress_data, f, indent=2)
-    print(f"[Benchmark] Completed. All {len(progress_data)} samples saved to temp file.")
+    print(
+        f"[Benchmark] Completed. All {len(progress_data)} samples saved to temp file."
+    )
 
     return metric_result
 

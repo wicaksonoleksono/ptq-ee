@@ -44,6 +44,7 @@ import sys
 import time
 import datetime
 from pathlib import Path
+import time
 
 # ---------------------------------------------------------------------------
 # Bootstrap: add LayerSkip to sys.path
@@ -74,6 +75,7 @@ from benchmark import BenchmarkArguments, benchmark
 # Model loading (handles all PTQ methods)
 # ---------------------------------------------------------------------------
 
+
 def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "auto"):
     """
     Load a model according to the PTQ method.
@@ -82,7 +84,9 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
     print(f"\n[Loader] model={model_id_or_path}  ptq={ptq_method}")
 
     if ptq_method == "fp16":
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_id_or_path, cache_dir=str(MODEL_CACHE))
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_id_or_path, cache_dir=str(MODEL_CACHE)
+        )
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
             torch_dtype=torch.float16,
@@ -91,7 +95,9 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
         )
 
     elif ptq_method == "int8_bnb":
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_id_or_path, cache_dir=str(MODEL_CACHE))
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_id_or_path, cache_dir=str(MODEL_CACHE)
+        )
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
             load_in_8bit=True,
@@ -135,6 +141,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
 # GPU memory helpers
 # ---------------------------------------------------------------------------
 
+
 def get_vram_gb() -> float:
     if torch.cuda.is_available():
         return torch.cuda.max_memory_allocated() / 1024**3
@@ -150,10 +157,11 @@ def reset_vram_stats():
 # Main benchmark runner
 # ---------------------------------------------------------------------------
 
+
 def run_benchmark(args):
     # Resolve which model path to load
     if args.ptq_method == "fp16":
-        model_path = args.model   # load directly from HF hub / local path
+        model_path = args.model  # load directly from HF hub / local path
     elif args.ptq_method == "int8_bnb":
         # Check if a quantized dir with load_config.json exists
         quant_dir = QUANT_DIR / f"{args.model.split('/')[-1]}-int8_bnb"
@@ -166,14 +174,16 @@ def run_benchmark(args):
             else:
                 model_path = args.model
         else:
-            model_path = args.model   # load from HF directly
+            model_path = args.model  # load from HF directly
     else:
         # Quantized checkpoint in quantized_models/<slug>-<method>
         slug = args.model.split("/")[-1]
         quant_dir = QUANT_DIR / f"{slug}-{args.ptq_method}"
         if not quant_dir.exists():
             print(f"ERROR: Quantized model not found at {quant_dir}")
-            print(f"  Run: python scripts/01_quantize.py --model {args.model} --method {args.ptq_method}")
+            print(
+                f"  Run: python scripts/01_quantize.py --model {args.model} --method {args.ptq_method}"
+            )
             sys.exit(1)
         model_path = str(quant_dir)
 
@@ -200,7 +210,7 @@ def run_benchmark(args):
         )
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     if local_rank != 0:
-        exit()   # LayerSkip only runs on rank 0
+        exit()  # LayerSkip only runs on rank 0
 
     # Load model
     reset_vram_stats()
@@ -209,14 +219,22 @@ def run_benchmark(args):
     t_load_end = time.perf_counter()
     load_time_s = t_load_end - t_load_start
     vram_after_load_gb = get_vram_gb()
-    print(f"[Loader] Model loaded in {load_time_s:.1f}s  |  VRAM: {vram_after_load_gb:.2f} GB")
+    print(
+        f"[Loader] Model loaded in {load_time_s:.1f}s  |  VRAM: {vram_after_load_gb:.2f} GB"
+    )
 
     # Build LayerSkip config objects
     generation_config = GenerationConfig(
         generation_strategy=args.generation_strategy,
         max_steps=args.max_steps,
-        exit_layer=args.exit_layer if args.generation_strategy == "self_speculative" else -1,
-        num_speculations=args.num_speculations if args.generation_strategy == "self_speculative" else -1,
+        exit_layer=(
+            args.exit_layer if args.generation_strategy == "self_speculative" else -1
+        ),
+        num_speculations=(
+            args.num_speculations
+            if args.generation_strategy == "self_speculative"
+            else -1
+        ),
         sample=args.sample,
     )
     benchmark_arguments = BenchmarkArguments(
@@ -229,6 +247,7 @@ def run_benchmark(args):
     # Start energy meter
     sys.path.insert(0, str(SCRIPT_DIR))
     from energy_meter import EnergyMeter
+
     meter = EnergyMeter(
         device_idx=CFG["energy"]["gpu_device_idx"],
         sample_interval=CFG["energy"]["sample_interval_s"],
@@ -239,19 +258,23 @@ def run_benchmark(args):
     reset_vram_stats()
     with torch.no_grad():
         model.generation_config.pad_token_id = tokenizer.eos_token_id
-        warmup_inputs = tokenizer("Warmup prompt for benchmarking.", return_tensors="pt")
+        warmup_inputs = tokenizer(
+            "Warmup prompt for benchmarking.", return_tensors="pt"
+        )
         warmup_inputs = {k: v.to(device) for k, v in warmup_inputs.items()}
         model.generate(**warmup_inputs, max_new_tokens=10)
     if torch.cuda.is_available():
         torch.cuda.synchronize()
 
     # Run benchmark with energy measurement
-    print(f"[Benchmark] Running {args.task} | {args.generation_strategy} | {args.num_samples} samples ...")
+    print(
+        f"[Benchmark] Running {args.task} | {args.generation_strategy} | {args.num_samples} samples ..."
+    )
     reset_vram_stats()
-    
+
     # Generate a unique run ID for this specific configuration
     run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
-    
+
     meter.start()
     t_bench_start = time.perf_counter()
 
@@ -262,7 +285,7 @@ def run_benchmark(args):
         generation_config=generation_config,
         seed=42,
         run_id=run_id,  # Pass the ID for organized temp saving
-        meter=meter,     # Pass the energy meter
+        meter=meter,  # Pass the energy meter
     )
 
     if torch.cuda.is_available():
@@ -281,8 +304,12 @@ def run_benchmark(args):
     avg_total_time = metric_result.get("total_time", {}).get("mean", 0.0)
     # The benchmark loop runs for args.num_samples
     total_tokens_est = avg_tps * avg_total_time * args.num_samples
-    
-    joules_per_token = (energy_summary["total_joules"] / total_tokens_est) if total_tokens_est > 0 else 0.0
+
+    joules_per_token = (
+        (energy_summary["total_joules"] / total_tokens_est)
+        if total_tokens_est > 0
+        else 0.0
+    )
 
     # Calculate final averages for efficiency
     tps = metric_result.get("tokens_per_second", {}).get("mean", 0.0)
@@ -302,8 +329,16 @@ def run_benchmark(args):
             "bits_weights": CFG["ptq_methods"][args.ptq_method]["bits_weights"],
             "bits_activations": CFG["ptq_methods"][args.ptq_method]["bits_activations"],
             "generation_strategy": args.generation_strategy,
-            "exit_layer": args.exit_layer if args.generation_strategy == "self_speculative" else None,
-            "num_speculations": args.num_speculations if args.generation_strategy == "self_speculative" else None,
+            "exit_layer": (
+                args.exit_layer
+                if args.generation_strategy == "self_speculative"
+                else None
+            ),
+            "num_speculations": (
+                args.num_speculations
+                if args.generation_strategy == "self_speculative"
+                else None
+            ),
             "task": args.task,
             "num_samples": args.num_samples,
             "n_shot": args.n_shot,
@@ -320,8 +355,12 @@ def run_benchmark(args):
         "efficiency_metrics": {
             "tokens_per_second": round(tps, 3),
             "time_per_token_ms": round(ms_per_tok, 3),
-            "prefill_tps": round(metric_result.get("prefill_tps", {}).get("mean", 0.0), 3),
-            "decode_tps": round(metric_result.get("decode_tps", {}).get("mean", 0.0), 3),
+            "prefill_tps": round(
+                metric_result.get("prefill_tps", {}).get("mean", 0.0), 3
+            ),
+            "decode_tps": round(
+                metric_result.get("decode_tps", {}).get("mean", 0.0), 3
+            ),
             "total_benchmark_time_s": round(bench_time_s, 2),
             "acceptance_rate": round(acceptance_rate, 4) if acceptance_rate else None,
             "peak_vram_gb": round(peak_vram_gb, 3),
@@ -369,33 +408,67 @@ def run_benchmark(args):
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run PTQ + LayerSkip benchmark")
 
     # Model
-    parser.add_argument("--model", type=str, default="facebook/layerskip-llama2-70B",
-                        help="HuggingFace model ID (unquantized) or local path")
-    parser.add_argument("--ptq_method", type=str, default="fp16",
-                        choices=list(CFG["ptq_methods"].keys()),
-                        help="PTQ method to use")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="facebook/layerskip-llama2-70B",
+        help="HuggingFace model ID (unquantized) or local path",
+    )
+    parser.add_argument(
+        "--ptq_method",
+        type=str,
+        default="fp16",
+        choices=list(CFG["ptq_methods"].keys()),
+        help="PTQ method to use",
+    )
 
     # Task
-    parser.add_argument("--task", type=str, default="cnn_dm_summarization",
-                        choices=["cnn_dm_summarization", "xsum_summarization", "cnn_dm_lm", "human_eval"],
-                        help="Benchmark task (LayerSkip dataset format)")
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="cnn_dm_summarization",
+        choices=[
+            "cnn_dm_summarization",
+            "xsum_summarization",
+            "cnn_dm_lm",
+            "human_eval",
+        ],
+        help="Benchmark task (LayerSkip dataset format)",
+    )
     parser.add_argument("--num_samples", type=int, default=200)
     parser.add_argument("--n_shot", type=int, default=0)
 
     # Decoding
-    parser.add_argument("--generation_strategy", type=str, default="autoregressive",
-                        choices=["autoregressive", "self_speculative", "hf_native"])
-    parser.add_argument("--exit_layer", type=int, default=30,
-                        help="Early exit layer for self-speculative decoding")
-    parser.add_argument("--num_speculations", type=int, default=6,
-                        help="Number of draft tokens for self-speculative decoding")
+    parser.add_argument(
+        "--generation_strategy",
+        type=str,
+        default="autoregressive",
+        choices=["autoregressive", "self_speculative", "hf_native"],
+    )
+    parser.add_argument(
+        "--exit_layer",
+        type=int,
+        default=30,
+        help="Early exit layer for self-speculative decoding",
+    )
+    parser.add_argument(
+        "--num_speculations",
+        type=int,
+        default=6,
+        help="Number of draft tokens for self-speculative decoding",
+    )
     parser.add_argument("--max_steps", type=int, default=256)
-    parser.add_argument("--sample", type=bool, default=False,
-                        help="Enable sampling (False = greedy, matches paper results)")
+    parser.add_argument(
+        "--sample",
+        type=bool,
+        default=False,
+        help="Enable sampling (False = greedy, matches paper results)",
+    )
 
     # Output
     parser.add_argument("--output_dir", type=str, default="../logs")

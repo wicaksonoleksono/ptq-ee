@@ -217,31 +217,43 @@ def benchmark(
 
     metrics = EvaluationMetrics.build_metrics()
     for i, example in enumerate(tqdm(evaluation_set)):
+        # Record state before this specific inference
+        joules_before = meter.joules if meter else 0.0
+        t_start = time.time()
+        
         response: GenerationResult = generator.generate(
             prompt=example.input,
             generation_config=generation_config,
         )
-        print(f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done.")
-        # print(f"[Prompt]:\n{example.input}")
-        # print(f"[Reference Response]:\n{example.output}")
-        # print(f"[Model Response]:\n{response.decoded_prediction}")
+        
+        # Record state after this specific inference
+        t_end = time.time()
+        joules_after = meter.joules if meter else 0.0
+        
+        duration = t_end - t_start
+        joules_this_sample = joules_after - joules_before
+        avg_watts_this_sample = (joules_this_sample / duration) if duration > 0 else 0.0
+        
+        print(f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W)")
+        
         if response.generation_strategy_result.acceptance_rate is not None:
             print(
                 f"[Acceptance Rate]: {response.generation_strategy_result.acceptance_rate:.4f}"
             )
         
         # Save to list for backup
-        current_joules = meter.summary()["total_joules"] if meter else 0.0
-        
         progress_entry = {
             "index": i,
             "prediction": response.decoded_prediction,
-            "tps": round(response.tokens_per_second, 3),
             "decode_tps": round(response.decode_tps, 3),
             "num_tokens": response.num_tokens_generated,
-            "joules": round(current_joules, 2),
-            "joules_per_token": round(current_joules / response.num_tokens_generated, 4) if response.num_tokens_generated > 0 else 0.0,
-            "acceptance_rate": response.generation_strategy_result.acceptance_rate
+            "duration_s": round(duration, 3),
+            "joules_this_sample": round(joules_this_sample, 2),
+            "avg_watts_this_sample": round(avg_watts_this_sample, 1),
+            "joules_per_token": round(joules_this_sample / response.num_tokens_generated, 4) if response.num_tokens_generated > 0 else 0.0,
+            "acceptance_rate": response.generation_strategy_result.acceptance_rate,
+            "gpu_util_percent": meter.avg_gpu_util if meter else 0.0,
+            "cpu_util_percent": meter.avg_cpu_util if meter else 0.0
         }
         progress_data.append(progress_entry)
         

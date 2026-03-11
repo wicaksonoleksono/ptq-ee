@@ -68,14 +68,21 @@
   "tasks": {
     "cnn_dm_summarization": {
       "dataset": "cnn_dm_summarization",
-      "num_samples": 200,
+      "num_samples": 100,
+      "primary_metric": "rouge_l",
+      "type": "generation"
+    },
+    "xsum_summarization": {
+      "dataset": "xsum_summarization",
+      "num_samples": 100,
       "primary_metric": "rouge_l",
       "type": "generation"
     }
   },
 
   "eval_tasks_lm_harness": {
-    "mmlu": { "num_samples": 200, "metric": "accuracy", "type": "classification" }
+    "mmlu": { "num_samples": 100, "metric": "accuracy", "type": "classification" },
+    "arc_challenge": { "num_samples": 100, "metric": "accuracy", "type": "classification" }
   },
 
   "layerskip_sweep": {

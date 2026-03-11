@@ -18,6 +18,7 @@ Usage:
 
 import threading
 import time
+import os
 
 try:
     import pynvml
@@ -25,21 +26,23 @@ try:
 except ImportError:
     _PYNVML_AVAILABLE = False
 
+try:
+    import psutil
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    _PSUTIL_AVAILABLE = False
+
 
 class EnergyMeter:
     """
-    Samples GPU power draw at `sample_interval` seconds intervals.
-    Integrates samples with the trapezoidal rule to get Joules.
-
-    Falls back gracefully if pynvml is not available (returns 0.0 values
-    and logs a warning), so the benchmark runner doesn't crash on CPU-only
-    machines.
+    Samples GPU power draw, GPU utilization, and CPU utilization.
+    Integrates power samples with the trapezoidal rule to get Joules.
     """
 
     def __init__(self, device_idx: int = 0, sample_interval: float = 0.1):
         self.device_idx = device_idx
         self.sample_interval = sample_interval
-        self._samples: list = []   # list of (timestamp, watts)
+        self._samples: list = []   # list of (timestamp, watts, gpu_util, cpu_util)
         self._running = False
         self._thread = None
         self._handle = None
@@ -55,13 +58,16 @@ class EnergyMeter:
             except Exception as e:
                 print(f"[EnergyMeter] WARNING: pynvml init failed: {e}. Energy will be 0.")
                 self._handle = None
-        else:
-            print("[EnergyMeter] WARNING: pynvml not installed. Energy will be 0.")
-            print("              Install with: pip install pynvml")
+        
+        if not _PSUTIL_AVAILABLE:
+            print("[EnergyMeter] WARNING: psutil not installed. CPU util will be 0.")
 
     def start(self):
         self._samples = []
         self._running = True
+        # Pre-sample CPU to initialize psutil's internal counter
+        if _PSUTIL_AVAILABLE:
+            psutil.cpu_percent(interval=None)
         self._thread = threading.Thread(target=self._sample_loop, daemon=True)
         self._thread.start()
 
@@ -74,7 +80,10 @@ class EnergyMeter:
         while self._running:
             ts = time.perf_counter()
             watts = self._read_power_watts()
-            self._samples.append((ts, watts))
+            gpu_util = self._read_gpu_util()
+            cpu_util = self._read_cpu_util()
+            
+            self._samples.append((ts, watts, gpu_util, cpu_util))
             time.sleep(self.sample_interval)
 
     def _read_power_watts(self) -> float:
@@ -83,6 +92,24 @@ class EnergyMeter:
         try:
             mw = pynvml.nvmlDeviceGetPowerUsage(self._handle)
             return mw / 1000.0   # milliwatts → watts
+        except Exception:
+            return 0.0
+
+    def _read_gpu_util(self) -> float:
+        if self._handle is None:
+            return 0.0
+        try:
+            util = pynvml.nvmlDeviceGetUtilizationRates(self._handle)
+            return float(util.gpu)
+        except Exception:
+            return 0.0
+
+    def _read_cpu_util(self) -> float:
+        if not _PSUTIL_AVAILABLE:
+            return 0.0
+        try:
+            # interval=None returns usage since last call (non-blocking)
+            return psutil.cpu_percent(interval=None)
         except Exception:
             return 0.0
 
@@ -102,23 +129,34 @@ class EnergyMeter:
     def avg_power_watts(self) -> float:
         if not self._samples:
             return 0.0
-        return sum(w for _, w in self._samples) / len(self._samples)
+        return sum(s[1] for s in self._samples) / len(self._samples)
+
+    @property
+    def avg_gpu_util(self) -> float:
+        if not self._samples:
+            return 0.0
+        return sum(s[2] for s in self._samples) / len(self._samples)
+
+    @property
+    def avg_cpu_util(self) -> float:
+        if not self._samples:
+            return 0.0
+        return sum(s[3] for s in self._samples) / len(self._samples)
 
     @property
     def peak_power_watts(self) -> float:
         if not self._samples:
             return 0.0
-        return max(w for _, w in self._samples)
-
-    @property
-    def num_samples(self) -> int:
-        return len(self._samples)
+        return max(s[1] for s in self._samples)
 
     def summary(self) -> dict:
         return {
             "total_joules": round(self.joules, 3),
             "avg_power_watts": round(self.avg_power_watts, 2),
+            "avg_gpu_util_percent": round(self.avg_gpu_util, 1),
+            "avg_cpu_util_percent": round(self.avg_cpu_util, 1),
             "peak_power_watts": round(self.peak_power_watts, 2),
-            "num_power_samples": self.num_samples,
+            "num_power_samples": len(self._samples),
             "pynvml_available": _PYNVML_AVAILABLE and self._handle is not None,
+            "psutil_available": _PSUTIL_AVAILABLE,
         }

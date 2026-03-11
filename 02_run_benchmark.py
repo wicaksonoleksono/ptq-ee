@@ -332,6 +332,8 @@ def run_benchmark(args):
             "total_joules": energy_summary["total_joules"],
             "joules_per_token": round(joules_per_token, 4),
             "avg_power_watts": energy_summary["avg_power_watts"],
+            "avg_gpu_util_percent": energy_summary["avg_gpu_util_percent"],
+            "avg_cpu_util_percent": energy_summary["avg_cpu_util_percent"],
             "peak_power_watts": energy_summary["peak_power_watts"],
             "num_power_samples": energy_summary["num_power_samples"],
             "pynvml_available": energy_summary["pynvml_available"],
@@ -356,6 +358,8 @@ def run_benchmark(args):
     print(f"  Energy (J):        {result['energy_metrics']['total_joules']}")
     print(f"  Energy (J/token):  {result['energy_metrics']['joules_per_token']}")
     print(f"  Avg Power (W):     {result['energy_metrics']['avg_power_watts']}")
+    print(f"  Avg GPU Util:      {result['energy_metrics']['avg_gpu_util_percent']}%")
+    print(f"  Avg CPU Util:      {result['energy_metrics']['avg_cpu_util_percent']}%")
     if acceptance_rate:
         print(f"  Acceptance rate:   {acceptance_rate:.2%}")
     print(f"{'='*60}\n")

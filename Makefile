@@ -9,12 +9,12 @@
 SHELL := /bin/bash
 
 MODEL          := facebook/layerskip-llama2-13B
-METHOD         := awq
+METHOD         := fp16
 TASK           := cnn_dm_summarization
-STRATEGY       := autoregressive
-EXIT_LAYER     := 8
+STRATEGY       := self_speculative
+EXIT_LAYER     := 30
 NUM_SPEC       := 6
-NUM_SAMPLES    := 200
+NUM_SAMPLES    := 100
 MAX_STEPS      := 256
 
 ALL_METHODS    := fp16 int8_bnb awq gptq smoothquant
@@ -22,7 +22,7 @@ ALL_TASKS      := cnn_dm_summarization xsum_summarization
 
 .PHONY: help dry-run dirs download \
         quantize quantize-all quantize-fp16 quantize-int8 quantize-awq quantize-gptq quantize-smoothquant \
-        benchmark benchmark-ar benchmark-ss benchmark-all sweep \
+        benchmark benchmark-ss benchmark-all sweep \
         collect plot pipeline \
         clean clean-logs clean-results clean-figures clean-models
 
@@ -32,15 +32,16 @@ help:
 	@echo "PTQ x LayerSkip Benchmark (llama2-13B)"
 	@echo "======================================="
 	@echo ""
+	@echo "All benchmarks now use SELF-SPECULATIVE (Early Exit) by default."
+	@echo ""
 	@echo "Pipeline:"
 	@echo "  make download      Phase 0 — download all datasets"
 	@echo "  make quantize      Phase 1 — quantize MODEL with METHOD"
 	@echo "  make quantize-all  Phase 1 — quantize 13B with ALL methods"
 	@echo "  make sweep         Phase 2 — find best exit_layer + num_speculations"
-	@echo "  make benchmark     Phase 3 — run one benchmark"
-	@echo "  make benchmark-ar  Phase 3 — autoregressive only"
-	@echo "  make benchmark-ss  Phase 3 — self-speculative only"
-	@echo "  make benchmark-all Phase 3 — ALL methods × strategies × tasks"
+	@echo "  make benchmark     Phase 3 — run one benchmark (SS)"
+	@echo "  make benchmark-ss  Phase 3 — self-speculative benchmark"
+	@echo "  make benchmark-all Phase 3 — ALL methods × tasks using SS decoding"
 	@echo "  make collect       Phase 4 — aggregate logs/ -> results/"
 	@echo "  make plot          Phase 5 — generate figures/"
 	@echo "  make pipeline      ALL phases end-to-end"
@@ -54,7 +55,7 @@ help:
 	@echo ""
 	@echo "Defaults:"
 	@echo "  MODEL=$(MODEL)  METHOD=$(METHOD)  TASK=$(TASK)"
-	@echo "  STRATEGY=$(STRATEGY)  EXIT_LAYER=$(EXIT_LAYER)  NUM_SPEC=$(NUM_SPEC)"
+	@echo "  EXIT_LAYER=$(EXIT_LAYER)  NUM_SPEC=$(NUM_SPEC)  SAMPLES=$(NUM_SAMPLES)"
 	@echo ""
 
 # ---------------------------------------------------------------------------
@@ -130,30 +131,6 @@ benchmark: dirs
 		--model $(MODEL) \
 		--ptq_method $(METHOD) \
 		--task $(TASK) \
-		--generation_strategy $(STRATEGY) \
-		--exit_layer $(EXIT_LAYER) \
-		--num_speculations $(NUM_SPEC) \
-		--num_samples $(NUM_SAMPLES) \
-		--max_steps $(MAX_STEPS) \
-		--sample False \
-		--output_dir ./logs
-
-benchmark-ar: dirs
-	python 02_run_benchmark.py \
-		--model $(MODEL) \
-		--ptq_method $(METHOD) \
-		--task $(TASK) \
-		--generation_strategy autoregressive \
-		--num_samples $(NUM_SAMPLES) \
-		--max_steps $(MAX_STEPS) \
-		--sample False \
-		--output_dir ./logs
-
-benchmark-ss: dirs
-	python 02_run_benchmark.py \
-		--model $(MODEL) \
-		--ptq_method $(METHOD) \
-		--task $(TASK) \
 		--generation_strategy self_speculative \
 		--exit_layer $(EXIT_LAYER) \
 		--num_speculations $(NUM_SPEC) \
@@ -162,23 +139,14 @@ benchmark-ss: dirs
 		--sample False \
 		--output_dir ./logs
 
+benchmark-ss: benchmark
+
 benchmark-all: dirs
 	@echo "========================================"
-	@echo "Phase 3: Running ALL benchmarks"
+	@echo "Phase 3: Running ALL benchmarks (Self-Speculative Only)"
 	@echo "========================================"
 	@for method in $(ALL_METHODS); do \
 		for task in $(ALL_TASKS); do \
-			echo ""; \
-			echo "--- $(MODEL) / $$method / autoregressive / $$task ---"; \
-			python 02_run_benchmark.py \
-				--model $(MODEL) \
-				--ptq_method $$method \
-				--task $$task \
-				--generation_strategy autoregressive \
-				--num_samples $(NUM_SAMPLES) \
-				--max_steps $(MAX_STEPS) \
-				--sample False \
-				--output_dir ./logs || echo "WARNING: $$method/ar/$$task failed, continuing..."; \
 			echo ""; \
 			echo "--- $(MODEL) / $$method / self_speculative / $$task ---"; \
 			python 02_run_benchmark.py \

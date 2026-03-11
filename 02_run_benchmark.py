@@ -388,7 +388,7 @@ def parse_args():
 
     # Decoding
     parser.add_argument("--generation_strategy", type=str, default="autoregressive",
-                        choices=["autoregressive", "self_speculative"])
+                        choices=["autoregressive", "self_speculative", "hf_native"])
     parser.add_argument("--exit_layer", type=int, default=30,
                         help="Early exit layer for self-speculative decoding")
     parser.add_argument("--num_speculations", type=int, default=6,

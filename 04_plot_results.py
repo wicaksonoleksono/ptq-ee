@@ -334,6 +334,49 @@ def plot_heatmap(runs: list, out_dir: Path):
 
 
 # ---------------------------------------------------------------------------
+# Figure 7: Hardware Utility (GPU / CPU %)
+# ---------------------------------------------------------------------------
+
+def plot_utility_bar(runs: list, out_dir: Path):
+    from collections import defaultdict
+    groups = defaultdict(lambda: {"gpu": [], "cpu": []})
+    for r in runs:
+        g = r.get("gpu_util_percent")
+        c = r.get("cpu_util_percent")
+        if g is not None or c is not None:
+            groups[r.get("ptq_method", "fp16")]["gpu"].append(g or 0)
+            groups[r.get("ptq_method", "fp16")]["cpu"].append(c or 0)
+
+    if not groups:
+        print("  [utility bar] No util data, skipping.")
+        return
+
+    methods = sorted(groups.keys())
+    gpu_means = [np.mean(groups[m]["gpu"]) for m in methods]
+    cpu_means = [np.mean(groups[m]["cpu"]) for m in methods]
+
+    x = np.arange(len(methods))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(x - width/2, gpu_means, width, label="GPU Util %", color="#6ACC65", edgecolor="black", linewidth=0.6)
+    ax.bar(x + width/2, cpu_means, width, label="CPU Util %", color="#4878CF", edgecolor="black", linewidth=0.6)
+
+    ax.set_ylabel("Utilization %")
+    ax.set_title("Average Hardware Utilization by PTQ Method")
+    ax.set_xticks(x)
+    ax.set_xticklabels(methods)
+    ax.legend()
+    ax.grid(axis="y", linestyle="--", alpha=0.3)
+
+    path = out_dir / "hardware_util_bar.png"
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def plot_energy_spikes(logs_dir: Path, out_dir: Path):

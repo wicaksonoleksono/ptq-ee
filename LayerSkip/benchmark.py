@@ -259,8 +259,9 @@ def benchmark(
                 else 0.0
             ),
             "acceptance_rate": response.generation_strategy_result.acceptance_rate,
-            "acceptance_rates": response.generation_strategy_result.acceptance_rates,
-            "exit_layers": response.generation_strategy_result.exit_layers,
+            "acceptance_rates_per_step": response.generation_strategy_result.acceptance_rates,
+            "exit_layers_per_token": response.generation_strategy_result.exit_layers,
+            "token_origins_per_token": response.generation_strategy_result.token_origins,
             "gpu_util_percent": meter.avg_gpu_util if meter else 0.0,
             "cpu_util_percent": meter.avg_cpu_util if meter else 0.0,
         }

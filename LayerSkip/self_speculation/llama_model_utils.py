@@ -276,7 +276,6 @@ def forward_early(
     )
 
 
-# TODO: update forward_remainder(...) to use transformers' new KV cache implementation rather than legacy.
 def forward_remainder(
     model: transformers.LlamaForCausalLM,
     input_ids: torch.Tensor,
@@ -286,111 +285,121 @@ def forward_remainder(
 ) -> ForwardResult:
     device = input_ids.device
     batch_size, seq_length = input_ids.shape
-    
+
     past_key_values = transformers.cache_utils.DynamicCache.from_legacy_cache(past_key_values)
-    # The draft cache length is what we have from forward_early
-    draft_past_key_values_length = past_key_values.get_seq_length()
-    
-    # num_tokens_to_generate is the number of tokens that are NOT yet in the draft cache
-    num_tokens_to_generate = seq_length - draft_past_key_values_length
-    if num_tokens_to_generate < 0:
-        # Should not happen in normal speculative decoding flow
-        num_tokens_to_generate = 0
 
-    # Check full past length (how many tokens have been processed by the FULL model)
-    # Use get_seq_length(layer_idx) if available, otherwise fallback to 0.
-    # We want to know how many tokens the LATE layers have seen.
-    try:
-        full_past_key_values_length = past_key_values.get_seq_length()
-    except Exception:
-        full_past_key_values_length = 0
+    # Early layers (0..exit_layer-1) have cache from forward_early
+    early_past_length = past_key_values.get_seq_length()  # uses layer 0
 
-    # For the remaining layers, the total sequence length after this pass will be:
-    seq_length_with_past = seq_length + full_past_key_values_length
-    
+    # Late layers (exit_layer..end) may have a DIFFERENT cache length (or 0)
+    if exit_layer < len(past_key_values.key_cache) and past_key_values.key_cache[exit_layer].numel() > 0:
+        late_past_length = past_key_values.get_seq_length(exit_layer)
+    else:
+        late_past_length = 0
+
+    # New tokens that early layers haven't cached yet
+    num_tokens_to_generate = max(0, seq_length - early_past_length)
+
     inputs_embeds = model.model.embed_tokens(input_ids)
 
-    # position_ids must match input_ids length
-    position_ids = torch.arange(
-        full_past_key_values_length,
-        full_past_key_values_length + seq_length,
-        dtype=torch.long,
+    # ----- Early layers setup (only if there are new tokens) -----
+    if num_tokens_to_generate > 0:
+        early_position_ids = torch.arange(
+            early_past_length, early_past_length + num_tokens_to_generate,
+            dtype=torch.long, device=device,
+        ).unsqueeze(0)
+        early_cache_position = torch.arange(
+            early_past_length, early_past_length + num_tokens_to_generate,
+            device=device,
+        )
+        early_attn_2d = input_ids.new_ones(
+            (batch_size, early_past_length + num_tokens_to_generate), dtype=torch.bool,
+        )
+        early_attention_mask = _prepare_decoder_attention_mask(
+            model, early_attn_2d,
+            (batch_size, num_tokens_to_generate),
+            inputs_embeds[:, -num_tokens_to_generate:],
+            early_past_length,
+        )
+        early_position_embeddings = model.model.rotary_emb(
+            inputs_embeds[:, -num_tokens_to_generate:], early_position_ids,
+        )
+
+    # ----- Late layers setup -----
+    # Late layers process full_hidden_states (= exit_query_cache) with their own past
+    late_input_length = seq_length
+    late_position_ids = torch.arange(
+        late_past_length, late_past_length + late_input_length,
+        dtype=torch.long, device=device,
+    ).unsqueeze(0)
+    late_cache_position = torch.arange(
+        late_past_length, late_past_length + late_input_length,
         device=device,
     )
-    position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-    cache_position = torch.arange(full_past_key_values_length, full_past_key_values_length + seq_length, device=device)
-
-    attention_mask = input_ids.new_ones(
-        (batch_size, seq_length_with_past),
-        dtype=torch.bool,
+    late_attn_2d = input_ids.new_ones(
+        (batch_size, late_past_length + late_input_length), dtype=torch.bool,
     )
-    
-    # We need a mask for the "early" exit layers (processing num_tokens_to_generate)
-    # and a mask for the "full" model layers (processing seq_length tokens).
-    
-    early_attention_mask = _prepare_decoder_attention_mask(
-        model,
-        attention_mask,
-        (batch_size, num_tokens_to_generate),
-        inputs_embeds[:, -num_tokens_to_generate:],
-        draft_past_key_values_length,
-    )
-
-    full_attention_mask = _prepare_decoder_attention_mask(
-        model,
-        attention_mask,
-        (batch_size, seq_length),
+    late_attention_mask = _prepare_decoder_attention_mask(
+        model, late_attn_2d,
+        (batch_size, late_input_length),
         inputs_embeds,
-        full_past_key_values_length,
+        late_past_length,
     )
 
     hidden_states = inputs_embeds
     full_hidden_states: Optional[torch.FloatTensor] = None
-    early_position_embeddings = model.model.rotary_emb(hidden_states[:, -num_tokens_to_generate:], position_ids[:, -num_tokens_to_generate:])
-    full_position_embeddings = model.model.rotary_emb(hidden_states, position_ids)
+    late_position_embeddings = None  # computed once at first late layer
 
     for idx, decoder_layer in enumerate(model.model.layers):
-        is_early_exit = idx < exit_layer
-        if is_early_exit:
-            early_hidden_states = hidden_states[:, -num_tokens_to_generate:]
-            early_position_ids = position_ids[:, -num_tokens_to_generate:]
-            early_cache_position = cache_position[-num_tokens_to_generate:]
-            
-            layer_outputs = decoder_layer(
-                early_hidden_states,
-                attention_mask=early_attention_mask,
-                position_ids=early_position_ids,
-                past_key_values=past_key_values,
-                use_cache=True,
-                cache_position=early_cache_position,
-                position_embeddings=early_position_embeddings,
-            )
-            hidden_states = layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
-        else:
-            if full_hidden_states is None and exit_query_cache is not None:
-                full_hidden_states = torch.cat(
-                    [exit_query_cache, hidden_states[:, -num_tokens_to_generate:]],
-                    dim=1,
+        is_early = idx < exit_layer
+        if is_early:
+            if num_tokens_to_generate > 0:
+                early_hidden = hidden_states[:, -num_tokens_to_generate:]
+                layer_outputs = decoder_layer(
+                    early_hidden,
+                    attention_mask=early_attention_mask,
+                    position_ids=early_position_ids,
+                    past_key_values=past_key_values,
+                    use_cache=True,
+                    cache_position=early_cache_position,
+                    position_embeddings=early_position_embeddings,
                 )
-                full_position_embeddings = model.model.rotary_emb(full_hidden_states, position_ids)
-            else:
-                full_hidden_states = hidden_states
-            
+                hidden_states = layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
+            # else: early layers already cached everything, skip
+        else:
+            # Build full_hidden_states once at the first late layer
+            if full_hidden_states is None:
+                if exit_query_cache is not None:
+                    if num_tokens_to_generate > 0:
+                        full_hidden_states = torch.cat(
+                            [exit_query_cache, hidden_states[:, -num_tokens_to_generate:]],
+                            dim=1,
+                        )
+                    else:
+                        # FIX: -0 slice returns entire tensor in Python, not empty!
+                        full_hidden_states = exit_query_cache
+                else:
+                    full_hidden_states = hidden_states
+                late_position_embeddings = model.model.rotary_emb(
+                    full_hidden_states, late_position_ids,
+                )
+
             layer_outputs = decoder_layer(
                 full_hidden_states,
-                attention_mask=full_attention_mask,
-                position_ids=position_ids,
+                attention_mask=late_attention_mask,
+                position_ids=late_position_ids,
                 past_key_values=past_key_values,
                 use_cache=True,
-                cache_position=cache_position,
-                position_embeddings=full_position_embeddings,
+                cache_position=late_cache_position,
+                position_embeddings=late_position_embeddings,
             )
-            hidden_states = layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
+            full_hidden_states = layer_outputs[0] if isinstance(layer_outputs, tuple) else layer_outputs
 
     past_key_values_legacy = past_key_values.to_legacy_cache()
-    hidden_states = model.model.norm(hidden_states)
-    logits = model.lm_head(hidden_states)
+    final_hidden = full_hidden_states if full_hidden_states is not None else hidden_states
+    final_hidden = model.model.norm(final_hidden)
+    logits = model.lm_head(final_hidden)
 
     return ForwardResult(
-        logits=logits, past_key_values=past_key_values_legacy, exit_query_cache=exit_query_cache
+        logits=logits, past_key_values=past_key_values_legacy, exit_query_cache=exit_query_cache,
     )

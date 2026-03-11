@@ -168,9 +168,24 @@ def crop_past_key_values(
 ) -> transformers.cache_utils.DynamicCache:
     if past_key_values is None:
         return None
-    for i in range(len(past_key_values.key_cache)):
-        past_key_values.key_cache[i] = past_key_values.key_cache[i][..., :maximum_length, :]
-        past_key_values.value_cache[i] = past_key_values.value_cache[i][..., :maximum_length, :]
+    
+    # Use the official crop method if available (Transformers 4.57+)
+    if hasattr(past_key_values, "crop"):
+        past_key_values.crop(maximum_length)
+    # Fallback for older versions with key_cache/value_cache attributes
+    elif hasattr(past_key_values, "key_cache"):
+        for i in range(len(past_key_values.key_cache)):
+            past_key_values.key_cache[i] = past_key_values.key_cache[i][..., :maximum_length, :]
+            past_key_values.value_cache[i] = past_key_values.value_cache[i][..., :maximum_length, :]
+    # Fallback for versions using .layers
+    elif hasattr(past_key_values, "layers"):
+        for layer in past_key_values.layers:
+            if hasattr(layer, "crop"):
+                layer.crop(maximum_length)
+            else:
+                layer.key_states = layer.key_states[..., :maximum_length, :]
+                layer.value_states = layer.value_states[..., :maximum_length, :]
+
     return past_key_values
 
 

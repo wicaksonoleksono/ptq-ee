@@ -1,2 +1,32 @@
 EE-LLM/
 quantized_models/
+model_cache/
+
+
+
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+logs/
+
+# Model cache
+model_cache/
+
+# Results / experiment outputs
+results/
+progress_*.json
+
+# ML model weights
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt

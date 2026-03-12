@@ -199,7 +199,7 @@ def run_benchmark(args):
     else:
         config_suffix = ""
         
-    run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}{config_suffix}__{args.task}"
+    run_id = f"{args.run_type}__{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}{config_suffix}__{args.task}"
     
     # 1. Skip check & Resume Logic
     out_dir = Path(args.output_dir)
@@ -511,6 +511,13 @@ def parse_args():
 
     # Output
     parser.add_argument("--output_dir", type=str, default="../logs")
+    parser.add_argument(
+        "--run_type",
+        type=str,
+        default="evaluation",
+        choices=["calibration", "evaluation"],
+        help="Tag for the run (calibration or evaluation)",
+    )
 
     return parser.parse_args()
 

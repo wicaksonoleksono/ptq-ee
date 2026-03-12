@@ -25,48 +25,52 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    benchmark_files = sorted(logs_dir.glob("**/benchmark_*.json"))
+    # Look for any JSON file in the logs directory
+    benchmark_files = sorted(logs_dir.glob("**/*.json"))
+    # Filter out progress files if they are in the same folder
+    benchmark_files = [f for f in benchmark_files if "progress_" not in f.name and "results_summary" not in f.name]
+    
     runs_data = []
     for f in benchmark_files:
         data = load_run(f)
-        if data: runs_data.append(data)
-
-    progress_files = list(logs_dir.glob("**/progress_*.json"))
-    progress_map = {}
-    for pf in progress_files:
-        data = load_run(pf)
-        if data:
-            key = pf.stem.replace("progress_", "")
-            progress_map[key] = data
+        # Ensure it's a valid benchmark file by checking for run_id
+        if data and "run_id" in data:
+            runs_data.append(data)
 
     rows = []
     for r in runs_data:
-        model_name = r.get("model", "").split("/")[-1]
-        prog_key = f"{model_name}__{r.get('ptq_method')}__{r.get('generation_strategy')}__" \
-                   f"{r.get('task')}"
-        
-        prog_samples = progress_map.get(prog_key, [])
-        
-        # Aggregates for CSV
-        avg_joules = np.mean([s.get("joules_per_token", 0) for s in prog_samples]) if prog_samples else 0
-        avg_gpu = np.mean([s.get("gpu_util_percent", 0) for s in prog_samples]) if prog_samples else 0
-        avg_cpu = np.mean([s.get("cpu_util_percent", 0) for s in prog_samples]) if prog_samples else 0
+        config = r.get("config", {})
+        quality = r.get("quality_metrics", {})
+        efficiency = r.get("efficiency_metrics", {})
+        energy = r.get("energy_metrics", {})
         
         row = {
             "run_id": r.get("run_id"),
-            "model": r.get("model"),
-            "ptq_method": r.get("ptq_method"),
-            "strategy": r.get("generation_strategy"),
-            "task": r.get("task"),
-            "tokens_per_sec": r.get("results", {}).get("tokens_per_second", {}).get("mean"),
-            "rouge_l": r.get("results", {}).get("predicted_text", {}).get("rouge-l"),
-            "acceptance_rate": r.get("results", {}).get("acceptance_rate", {}).get("mean"),
-            "joules_per_token": round(avg_joules, 4),
-            "gpu_util_percent": round(avg_gpu, 1),
-            "cpu_util_percent": round(avg_cpu, 1),
-            "gpu_mem_used_mb": np.mean([s.get("gpu_mem_used_mb", 0) for s in prog_samples]) if prog_samples else 0,
-            # KEEP THE FULL SHIT HERE
-            "full_audit_trail": prog_samples 
+            "model": config.get("model"),
+            "ptq_method": config.get("ptq_method"),
+            "strategy": config.get("generation_strategy"),
+            "task": config.get("task"),
+            "bits_w": config.get("bits_weights"),
+            "bits_a": config.get("bits_activations"),
+            "exit_layer": config.get("exit_layer"),
+            "num_speculations": config.get("num_speculations"),
+            
+            "tokens_per_sec": efficiency.get("tokens_per_second"),
+            "decode_tps": efficiency.get("decode_tps"),
+            "prefill_tps": efficiency.get("prefill_tps"),
+            "ms_per_token": efficiency.get("time_per_token_ms"),
+            
+            "rouge_l": quality.get("rouge_l"),
+            "rouge_1": quality.get("rouge_1"),
+            "rouge_2": quality.get("rouge_2"),
+            "bleu": quality.get("bleu"),
+            
+            "joules_per_token": energy.get("joules_per_token"),
+            "total_joules": energy.get("total_joules"),
+            "avg_power_w": energy.get("avg_power_watts"),
+            "gpu_util": energy.get("avg_gpu_util_percent"),
+            "cpu_util": energy.get("avg_cpu_util_percent"),
+            "gpu_mem_used_mb": efficiency.get("peak_vram_gb", 0) * 1024, # convert GB to MB for the plotter
         }
         rows.append(row)
 

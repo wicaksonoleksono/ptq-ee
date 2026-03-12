@@ -288,10 +288,6 @@ def benchmark(
             "token_origins_per_token": response.generation_strategy_result.token_origins,
             "speculation_audit": response.generation_strategy_result.speculation_audit,
         }
-            "gpu_util_percent": round(avg_gpu_util, 1),
-            "gpu_mem_used_mb": round(avg_gpu_mem, 1),
-            "cpu_util_percent": round(avg_cpu_util, 1),
-        }
         progress_data.append(progress_entry)
 
         # Every 5 samples, write to disk

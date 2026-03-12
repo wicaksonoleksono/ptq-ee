@@ -1,53 +1,61 @@
 """
 04_plot_results.py
 ------------------
-Generates all benchmark figures from results_summary.json.
+Generates all benchmark figures from results/results_summary.json.
 
 Figures produced:
-  1. pareto_quality_vs_speed.png       — ROUGE-L vs tokens/sec (Pareto curve)
-  2. energy_per_token_bar.png          — Joules/token grouped by PTQ method
+  1. pareto_quality_vs_speed.png       — ROUGE-L vs tokens/sec, colored by PTQ, marker by task
+  2. energy_per_token_bar.png          — Joules/token grouped by PTQ × task
   3. vram_footprint_bar.png            — Peak VRAM by PTQ method
-  4. speedup_bar.png                   — Speedup over fp16+autoregressive
-  5. acceptance_rate_scatter.png       — Self-speculative acceptance rate by config
-  6. quality_radar.png                 — Multi-metric radar chart
+  4. speedup_bar.png                   — Inference throughput (tokens/sec) by PTQ × task
+  5. acceptance_rate_scatter.png       — Acceptance rate by PTQ × task
+  6. acceptance_sweep_lines.png        — Acceptance rate vs exit layer per PTQ method
+  7. quality_heatmap.png               — ROUGE-L heatmap: PTQ × task
+  8. hardware_util_bar.png             — GPU/CPU utilization by PTQ method
+  9. energy_spikes_profile.png         — Cumulative energy over samples from progress_*.json
 
 Usage:
-    python scripts/04_plot_results.py \\
+    python 04_plot_results.py \\
         --results_json ./results/results_summary.json \\
+        --scripts_dir . \\
         --output_dir ./figures
 """
 
 import argparse
 import json
 from pathlib import Path
+from collections import defaultdict
 
 import matplotlib
-matplotlib.use("Agg")   # non-interactive backend, safe for servers
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 
 
-# Color palette for PTQ methods
-PTQ_COLORS = {
-    "fp16":        "#4878CF",   # blue
-    "int8_bnb":    "#6ACC65",   # green
-    "awq":         "#D65F5F",   # red
-    "gptq":        "#B47CC7",   # purple
-    "smoothquant": "#C4AD66",   # gold
+DISPLAY_NAMES = {
+    "fp16":        "Unquantized",
+    "int8_bnb":    "INT8 (BnB)",
+    "awq":         "AWQ",
+    "gptq":        "GPTQ",
+    "smoothquant": "SmoothQuant",
 }
 
-STRATEGY_MARKERS = {
-    "autoregressive":          "o",
-    "self_speculative_small":  "^",
-    "self_speculative_medium": "s",
-    "self_speculative_large":  "D",
+PTQ_COLORS = {
+    "fp16":        "#4878CF",
+    "int8_bnb":    "#6ACC65",
+    "awq":         "#D65F5F",
+    "gptq":        "#B47CC7",
+    "smoothquant": "#C4AD66",
 }
-STRATEGY_SHORT = {
-    "autoregressive":          "AR",
-    "self_speculative_small":  "SS-20",
-    "self_speculative_medium": "SS-30",
-    "self_speculative_large":  "SS-40",
+
+TASK_MARKERS = {
+    "cnn_dm_summarization": "o",
+    "xsum_summarization":   "s",
+}
+TASK_SHORT = {
+    "cnn_dm_summarization": "CNN/DM",
+    "xsum_summarization":   "XSum",
 }
 
 plt.rcParams.update({
@@ -61,26 +69,32 @@ plt.rcParams.update({
 })
 
 
+def display_name(ptq: str) -> str:
+    return DISPLAY_NAMES.get(ptq, ptq)
+
+
 def load_results(path: str) -> list:
     with open(path) as f:
         data = json.load(f)
-    return data["runs"]
+    runs = data["runs"]
+    # Deduplicate by run_id (keep first occurrence)
+    seen = set()
+    deduped = []
+    for r in runs:
+        rid = r.get("run_id")
+        if rid not in seen:
+            seen.add(rid)
+            deduped.append(r)
+    if len(deduped) < len(runs):
+        print(f"  [load] Removed {len(runs) - len(deduped)} duplicate run(s).")
+    return deduped
 
 
 def ptq_label(r: dict) -> str:
     m = r.get("ptq_method", "")
     w = r.get("bits_w", "?")
     a = r.get("bits_a", "?")
-    return f"{m}\n(W{w}A{a})"
-
-
-def strategy_label(r: dict) -> str:
-    s = r.get("strategy", "")
-    el = r.get("exit_layer")
-    ns = r.get("num_speculations")
-    if s == "self_speculative" and el and ns:
-        return f"SS(L{el},K{ns})"
-    return s
+    return f"{display_name(m)}\n(W{w}A{a})"
 
 
 # ---------------------------------------------------------------------------
@@ -96,27 +110,24 @@ def plot_pareto(runs: list, out_dir: Path):
         if tps is None or rl is None:
             continue
         ptq = r.get("ptq_method", "fp16")
-        strat = r.get("strategy", "autoregressive")
-
+        task = r.get("task", "")
         color = PTQ_COLORS.get(ptq, "#999999")
-        marker = "o" if strat == "autoregressive" else "^"
-        ax.scatter(tps, rl, c=color, marker=marker, s=90, alpha=0.85, edgecolors="black", linewidths=0.5)
+        marker = TASK_MARKERS.get(task, "o")
+        ax.scatter(tps, rl, c=color, marker=marker, s=90, alpha=0.85,
+                   edgecolors="black", linewidths=0.5)
+        ax.annotate(display_name(ptq), (tps, rl),
+                    textcoords="offset points", xytext=(6, 4), fontsize=7, alpha=0.8)
 
-        label = f"{ptq}\n{strategy_label(r)}"
-        ax.annotate(label, (tps, rl), textcoords="offset points", xytext=(6, 4),
-                    fontsize=7, alpha=0.8)
-
-    # Legend for PTQ colors
-    patches = [mpatches.Patch(color=c, label=m) for m, c in PTQ_COLORS.items()]
-    patches += [
-        plt.scatter([], [], marker="o", color="grey", label="Autoregressive"),
-        plt.scatter([], [], marker="^", color="grey", label="Self-Speculative"),
+    ptq_patches = [mpatches.Patch(color=c, label=display_name(m))
+                   for m, c in PTQ_COLORS.items()]
+    task_handles = [
+        plt.scatter([], [], marker=TASK_MARKERS[t], color="grey", label=TASK_SHORT[t])
+        for t in TASK_MARKERS
     ]
-    ax.legend(handles=patches, loc="lower right", fontsize=8)
-
+    ax.legend(handles=ptq_patches + task_handles, loc="lower right", fontsize=8)
     ax.set_xlabel("Tokens / second  (higher = faster)")
     ax.set_ylabel("ROUGE-L  (higher = better quality)")
-    ax.set_title("Quality–Efficiency Pareto: PTQ × LayerSkip Decoding Strategy")
+    ax.set_title("Quality–Efficiency Pareto: PTQ Method × Task")
     ax.grid(True, linestyle="--", alpha=0.4)
 
     path = out_dir / "pareto_quality_vs_speed.png"
@@ -131,13 +142,11 @@ def plot_pareto(runs: list, out_dir: Path):
 # ---------------------------------------------------------------------------
 
 def plot_energy_bar(runs: list, out_dir: Path):
-    # Group by (ptq_method, strategy), average joules_per_token
-    from collections import defaultdict
     groups = defaultdict(list)
     for r in runs:
         j = r.get("joules_per_token")
         if j is not None:
-            key = (r.get("ptq_method", "fp16"), r.get("strategy", "autoregressive"))
+            key = (r.get("ptq_method", "fp16"), r.get("task", ""))
             groups[key].append(j)
 
     if not groups:
@@ -145,18 +154,18 @@ def plot_energy_bar(runs: list, out_dir: Path):
         return
 
     labels, values, colors = [], [], []
-    for (ptq, strat), vals in sorted(groups.items()):
-        labels.append(f"{ptq}\n{strat[:3].upper()}")
+    for (ptq, task), vals in sorted(groups.items()):
+        labels.append(f"{display_name(ptq)}\n{TASK_SHORT.get(task, task)}")
         values.append(np.mean(vals))
         colors.append(PTQ_COLORS.get(ptq, "#aaaaaa"))
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(11, 5))
     bars = ax.bar(range(len(labels)), values, color=colors, edgecolor="black", linewidth=0.6)
     ax.bar_label(bars, fmt="%.3f J", padding=3, fontsize=8)
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=0)
     ax.set_ylabel("Joules / token  (lower = more efficient)")
-    ax.set_title("Energy per Token by PTQ Method × Decoding Strategy")
+    ax.set_title("Energy per Token by PTQ Method × Task")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     path = out_dir / "energy_per_token_bar.png"
@@ -171,12 +180,11 @@ def plot_energy_bar(runs: list, out_dir: Path):
 # ---------------------------------------------------------------------------
 
 def plot_vram_bar(runs: list, out_dir: Path):
-    from collections import defaultdict
     groups = defaultdict(list)
     for r in runs:
         v = r.get("gpu_mem_used_mb")
         if v and v > 0:
-            groups[r.get("ptq_method", "fp16")].append(v / 1024.0) # MB to GB
+            groups[r.get("ptq_method", "fp16")].append(v / 1024.0)
 
     if not groups:
         print("  [vram bar] No gpu_mem_used_mb data, skipping.")
@@ -185,9 +193,10 @@ def plot_vram_bar(runs: list, out_dir: Path):
     ptq_methods = sorted(groups.keys())
     values = [np.mean(groups[m]) for m in ptq_methods]
     colors = [PTQ_COLORS.get(m, "#aaaaaa") for m in ptq_methods]
+    labels = [display_name(m) for m in ptq_methods]
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    bars = ax.bar(ptq_methods, values, color=colors, edgecolor="black", linewidth=0.6)
+    bars = ax.bar(labels, values, color=colors, edgecolor="black", linewidth=0.6)
     ax.bar_label(bars, fmt="%.1f GB", padding=3, fontsize=9)
     ax.set_ylabel("Avg GPU Memory (GB) used during inference")
     ax.set_title("VRAM Footprint by PTQ Method")
@@ -201,34 +210,36 @@ def plot_vram_bar(runs: list, out_dir: Path):
 
 
 # ---------------------------------------------------------------------------
-# Figure 4: Speedup over fp16 + autoregressive baseline
+# Figure 4: Inference Throughput (tokens/sec) by PTQ × Task
+# Note: speedup_vs_fp16_ar is 1.0 for all runs (single-strategy experiment),
+#       so we visualize raw throughput instead.
 # ---------------------------------------------------------------------------
 
 def plot_speedup_bar(runs: list, out_dir: Path):
-    labeled = [(r.get("ptq_method", "?"), strategy_label(r), r.get("speedup_vs_fp16_ar"))
-               for r in runs if r.get("speedup_vs_fp16_ar") is not None]
-    if not labeled:
-        print("  [speedup bar] No speedup data, skipping.")
+    groups = defaultdict(list)
+    for r in runs:
+        tps = r.get("tokens_per_sec")
+        if tps is not None:
+            key = (r.get("ptq_method", "fp16"), r.get("task", ""))
+            groups[key].append(tps)
+
+    if not groups:
+        print("  [throughput bar] No tokens_per_sec data, skipping.")
         return
 
-    from collections import defaultdict
-    groups = defaultdict(list)
-    for ptq, strat, spd in labeled:
-        groups[(ptq, strat)].append(spd)
+    labels, values, colors = [], [], []
+    for (ptq, task), vals in sorted(groups.items()):
+        labels.append(f"{display_name(ptq)}\n{TASK_SHORT.get(task, task)}")
+        values.append(np.mean(vals))
+        colors.append(PTQ_COLORS.get(ptq, "#aaaaaa"))
 
-    labels = [f"{p}\n{s}" for p, s in groups]
-    values = [np.mean(v) for v in groups.values()]
-    colors = [PTQ_COLORS.get(p, "#aaaaaa") for p, _ in groups]
-
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(11, 5))
     bars = ax.bar(range(len(labels)), values, color=colors, edgecolor="black", linewidth=0.6)
-    ax.bar_label(bars, fmt="%.2fx", padding=3, fontsize=8)
-    ax.axhline(1.0, color="black", linestyle="--", linewidth=1, label="Baseline (fp16 AR)")
+    ax.bar_label(bars, fmt="%.1f", padding=3, fontsize=8)
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=0)
-    ax.set_ylabel("Speedup (×)  over fp16 + autoregressive")
-    ax.set_title("Inference Speedup by PTQ × Decoding Strategy")
-    ax.legend()
+    ax.set_ylabel("Tokens / second  (higher = faster)")
+    ax.set_title("Inference Throughput by PTQ Method × Task")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     path = out_dir / "speedup_bar.png"
@@ -239,36 +250,36 @@ def plot_speedup_bar(runs: list, out_dir: Path):
 
 
 # ---------------------------------------------------------------------------
-# Figure 5: Acceptance Rate scatter (self-speculative only)
+# Figure 5: Acceptance Rate by PTQ × Task
 # ---------------------------------------------------------------------------
 
 def plot_acceptance_rate(runs: list, out_dir: Path):
-    spec_runs = [r for r in runs
-                 if r.get("strategy") == "self_speculative"
-                 and r.get("acceptance_rate") is not None
-                 and r.get("exit_layer") is not None]
-    if not spec_runs:
-        print("  [acceptance rate] No self-speculative data, skipping.")
+    groups = defaultdict(list)
+    for r in runs:
+        ar = r.get("acceptance_rate")
+        if ar is not None:
+            key = (r.get("ptq_method", "fp16"), r.get("task", ""))
+            groups[key].append(ar)
+
+    if not groups:
+        print("  [acceptance rate] No acceptance_rate data, skipping.")
         return
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    for r in spec_runs:
-        ptq = r.get("ptq_method", "fp16")
-        el = r.get("exit_layer")
-        ar = r.get("acceptance_rate")
-        ax.scatter(el, ar, c=PTQ_COLORS.get(ptq, "#999"), s=80,
-                   edgecolors="black", linewidths=0.5, label=ptq)
+    labels, values, colors = [], [], []
+    for (ptq, task), vals in sorted(groups.items()):
+        labels.append(f"{display_name(ptq)}\n{TASK_SHORT.get(task, task)}")
+        values.append(np.mean(vals))
+        colors.append(PTQ_COLORS.get(ptq, "#aaaaaa"))
 
-    # De-dup legend
-    handles, labels = ax.get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    ax.legend(by_label.values(), by_label.keys())
-
-    ax.set_xlabel("Exit Layer")
-    ax.set_ylabel("Acceptance Rate")
-    ax.set_title("Self-Speculative Acceptance Rate vs Exit Layer")
-    ax.set_ylim(0, 1)
-    ax.grid(True, linestyle="--", alpha=0.4)
+    fig, ax = plt.subplots(figsize=(11, 5))
+    bars = ax.bar(range(len(labels)), values, color=colors, edgecolor="black", linewidth=0.6)
+    ax.bar_label(bars, fmt="%.3f", padding=3, fontsize=8)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=0)
+    ax.set_ylabel("Acceptance Rate  (higher = more tokens accepted from draft)")
+    ax.set_title("Self-Speculative Acceptance Rate by PTQ Method × Task")
+    ax.set_ylim(0, 0.75)
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     path = out_dir / "acceptance_rate_scatter.png"
     fig.tight_layout()
@@ -278,53 +289,48 @@ def plot_acceptance_rate(runs: list, out_dir: Path):
 
 
 # ---------------------------------------------------------------------------
-# Figure 6: Heatmap — Quality (ROUGE-L) × PTQ × Decoding
+# Figure 6: Quality Heatmap — ROUGE-L × PTQ × Task
 # ---------------------------------------------------------------------------
 
 def plot_heatmap(runs: list, out_dir: Path):
-    from collections import defaultdict
     cell = defaultdict(list)
-    ptq_methods = []
-    strategies = []
+    ptq_set, task_set = set(), set()
     for r in runs:
         rl = r.get("rouge_l")
         if rl is None:
             continue
         p = r.get("ptq_method", "fp16")
-        s = strategy_label(r)
-        cell[(p, s)].append(rl)
-        if p not in ptq_methods:
-            ptq_methods.append(p)
-        if s not in strategies:
-            strategies.append(s)
+        t = r.get("task", "")
+        cell[(p, t)].append(rl)
+        ptq_set.add(p)
+        task_set.add(t)
 
     if not cell:
         print("  [heatmap] No ROUGE-L data, skipping.")
         return
 
-    ptq_methods = sorted(set(ptq_methods))
-    strategies = sorted(set(strategies))
-    data = np.zeros((len(ptq_methods), len(strategies)))
+    ptq_methods = sorted(ptq_set)
+    tasks = sorted(task_set)
+    data = np.zeros((len(ptq_methods), len(tasks)))
     for i, p in enumerate(ptq_methods):
-        for j, s in enumerate(strategies):
-            vals = cell.get((p, s), [])
+        for j, t in enumerate(tasks):
+            vals = cell.get((p, t), [])
             data[i, j] = np.mean(vals) if vals else np.nan
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    im = ax.imshow(data, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1)
-    ax.set_xticks(range(len(strategies)))
-    ax.set_xticklabels(strategies, rotation=30, ha="right")
+    fig, ax = plt.subplots(figsize=(7, 5))
+    im = ax.imshow(data, aspect="auto", cmap="RdYlGn", vmin=0.08, vmax=0.16)
+    ax.set_xticks(range(len(tasks)))
+    ax.set_xticklabels([TASK_SHORT.get(t, t) for t in tasks])
     ax.set_yticks(range(len(ptq_methods)))
-    ax.set_yticklabels(ptq_methods)
-    ax.set_title("ROUGE-L Heatmap: PTQ Method × Decoding Strategy")
+    ax.set_yticklabels([display_name(m) for m in ptq_methods])
+    ax.set_title("ROUGE-L Heatmap: PTQ Method × Task")
     fig.colorbar(im, ax=ax, label="ROUGE-L")
 
     for i in range(len(ptq_methods)):
-        for j in range(len(strategies)):
+        for j in range(len(tasks)):
             val = data[i, j]
             if not np.isnan(val):
-                ax.text(j, i, f"{val:.3f}", ha="center", va="center", fontsize=8,
-                        color="black" if val > 0.3 else "white")
+                ax.text(j, i, f"{val:.4f}", ha="center", va="center", fontsize=9)
 
     path = out_dir / "quality_heatmap.png"
     fig.tight_layout()
@@ -334,18 +340,18 @@ def plot_heatmap(runs: list, out_dir: Path):
 
 
 # ---------------------------------------------------------------------------
-# Figure 7: Hardware Utility (GPU / CPU %)
+# Figure 7: Hardware Utilization (GPU / CPU %)
 # ---------------------------------------------------------------------------
 
 def plot_utility_bar(runs: list, out_dir: Path):
-    from collections import defaultdict
     groups = defaultdict(lambda: {"gpu": [], "cpu": []})
     for r in runs:
         g = r.get("gpu_util_percent")
         c = r.get("cpu_util_percent")
         if g is not None or c is not None:
-            groups[r.get("ptq_method", "fp16")]["gpu"].append(g or 0)
-            groups[r.get("ptq_method", "fp16")]["cpu"].append(c or 0)
+            ptq = r.get("ptq_method", "fp16")
+            groups[ptq]["gpu"].append(g or 0)
+            groups[ptq]["cpu"].append(c or 0)
 
     if not groups:
         print("  [utility bar] No util data, skipping.")
@@ -354,18 +360,20 @@ def plot_utility_bar(runs: list, out_dir: Path):
     methods = sorted(groups.keys())
     gpu_means = [np.mean(groups[m]["gpu"]) for m in methods]
     cpu_means = [np.mean(groups[m]["cpu"]) for m in methods]
+    labels = [display_name(m) for m in methods]
 
-    x = np.arange(len(methods))
+    x = np.arange(len(labels))
     width = 0.35
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.bar(x - width/2, gpu_means, width, label="GPU Util %", color="#6ACC65", edgecolor="black", linewidth=0.6)
-    ax.bar(x + width/2, cpu_means, width, label="CPU Util %", color="#4878CF", edgecolor="black", linewidth=0.6)
-
+    ax.bar(x - width/2, gpu_means, width, label="GPU Util %",
+           color="#6ACC65", edgecolor="black", linewidth=0.6)
+    ax.bar(x + width/2, cpu_means, width, label="CPU Util %",
+           color="#4878CF", edgecolor="black", linewidth=0.6)
     ax.set_ylabel("Utilization %")
     ax.set_title("Average Hardware Utilization by PTQ Method")
     ax.set_xticks(x)
-    ax.set_xticklabels(methods)
+    ax.set_xticklabels(labels)
     ax.legend()
     ax.grid(axis="y", linestyle="--", alpha=0.3)
 
@@ -377,38 +385,35 @@ def plot_utility_bar(runs: list, out_dir: Path):
 
 
 # ---------------------------------------------------------------------------
-# Figure 8: Acceptance Sweep (Acceptance Rate vs Exit Layer)
+# Figure 8: Acceptance Rate vs Exit Layer (sweep)
 # ---------------------------------------------------------------------------
 
 def plot_acceptance_sweep(runs: list, out_dir: Path):
-    from collections import defaultdict
-    # Group AR by (ptq_method, exit_layer)
     data = defaultdict(lambda: defaultdict(list))
-    
+
     for r in runs:
-        if r.get("strategy") == "self_speculative":
-            ptq = r.get("ptq_method", "fp16")
-            el = r.get("exit_layer")
-            ar = r.get("acceptance_rate")
-            if el is not None and ar is not None:
-                data[ptq][el].append(ar)
-                
+        ptq = r.get("ptq_method", "fp16")
+        el = r.get("exit_layer")
+        ar = r.get("acceptance_rate")
+        if el is not None and ar is not None:
+            data[ptq][el].append(ar)
+
     if not data:
         print("  [acceptance sweep] No sweep data, skipping.")
         return
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    
+
     for ptq, layers in sorted(data.items()):
         sorted_layers = sorted(layers.keys())
         avg_ar = [np.mean(layers[l]) for l in sorted_layers]
-        
         color = PTQ_COLORS.get(ptq, "#999")
-        ax.plot(sorted_layers, avg_ar, marker='o', label=ptq, color=color, linewidth=2, markersize=8)
+        ax.plot(sorted_layers, avg_ar, marker="o", label=display_name(ptq),
+                color=color, linewidth=2, markersize=8)
 
     ax.set_xlabel("Exit Layer Index")
     ax.set_ylabel("Mean Acceptance Rate")
-    ax.set_title("Quantization Impact on Speculation: Acceptance vs. Exit Layer")
+    ax.set_title("Acceptance Rate by Exit Layer and PTQ Method")
     ax.set_ylim(0, 1.05)
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.legend()
@@ -421,43 +426,52 @@ def plot_acceptance_sweep(runs: list, out_dir: Path):
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Figure 9: Cumulative Energy Profile from progress_*.json
 # ---------------------------------------------------------------------------
-def plot_energy_spikes(logs_dir: Path, out_dir: Path):
-    """
-    Reads progress_*.json backup files to plot cumulative Joules across the run
-    to show energy 'spikes' and slopes for different methods.
-    """
-    fig, ax = plt.subplots(figsize=(10, 6))
 
-    found_files = list(logs_dir.glob("progress_*.json"))
-    if not found_files:
-        # Check current dir as well
-        found_files = list(Path(".").glob("progress_*.json"))
+def _make_progress_label(p_file: Path) -> str:
+    """Build a short readable label from a progress filename."""
+    stem = p_file.stem  # e.g. progress_layerskip-llama2-13B__fp16__self_speculative__cnn_dm_summarization
+    stem = stem.replace("progress_layerskip-llama2-13B__", "").replace("__self_speculative", "")
+    # stem is now e.g. "fp16__cnn_dm_summarization"
+    parts = stem.split("__")
+    ptq = parts[0] if parts else stem
+    task = parts[1] if len(parts) > 1 else ""
+    task_short = TASK_SHORT.get(task, task)
+    return f"{display_name(ptq)} ({task_short})"
 
+
+def plot_energy_spikes(scripts_dir: Path, out_dir: Path):
+    """Cumulative energy (Joules) over sample index from progress_*.json files."""
+    found_files = sorted(scripts_dir.glob("progress_*.json"))
     if not found_files:
-        print("  [energy spikes] No progress backup files found, skipping spike plot.")
+        print("  [energy spikes] No progress_*.json files found, skipping.")
         return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
 
     for p_file in found_files:
         with open(p_file) as f:
             data = json.load(f)
+        if not data:
+            continue
 
-        if not data: continue
+        indices = [s.get("index", i) for i, s in enumerate(data)]
+        # joules_this_sample is per sample; compute cumulative sum
+        sample_joules = [s.get("joules_this_sample", 0) or 0 for s in data]
+        cumulative = list(np.cumsum(sample_joules))
 
-        indices = [i.get("index") for i in data]
-        joules = [i.get("joules") for i in data]
-
-        # Determine method from filename
-        # progress_llama2-13B__awq__self_speculative__cnn_dm_summarization.json
-        label = p_file.stem.replace("progress_", "").replace("__cnn_dm_summarization", "")
-
-        ax.plot(indices, joules, label=label, alpha=0.8, linewidth=1.5)
+        label = _make_progress_label(p_file)
+        ptq_key = p_file.stem.split("__")[1] if "__" in p_file.stem else "fp16"
+        color = PTQ_COLORS.get(ptq_key, "#999999")
+        linestyle = "-" if "cnn_dm" in p_file.name else "--"
+        ax.plot(indices, cumulative, label=label, color=color,
+                alpha=0.85, linewidth=1.5, linestyle=linestyle)
 
     ax.set_xlabel("Sample Index")
     ax.set_ylabel("Cumulative Energy (Joules)")
-    ax.set_title("Energy Consumption Profile: PTQ × Decoding (Sample-by-Sample)")
-    ax.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1, 1))
+    ax.set_title("Energy Consumption Profile: PTQ Method × Task\n(solid = CNN/DM, dashed = XSum)")
+    ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1, 1))
     ax.grid(True, linestyle="--", alpha=0.3)
 
     path = out_dir / "energy_spikes_profile.png"
@@ -466,12 +480,18 @@ def plot_energy_spikes(logs_dir: Path, out_dir: Path):
     plt.close(fig)
     print(f"  Saved: {path}")
 
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main():
-    import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--results_json", type=str, default="../results/results_summary.json")
-    parser.add_argument("--logs_dir", type=str, default="../logs")
-    parser.add_argument("--output_dir", type=str, default="../figures")
+    parser.add_argument("--results_json", type=str,
+                        default="./results/results_summary.json")
+    parser.add_argument("--scripts_dir", type=str, default=".",
+                        help="Directory containing progress_*.json files")
+    parser.add_argument("--output_dir", type=str, default="./figures")
     args = parser.parse_args()
 
     res_path = Path(args.results_json)
@@ -481,7 +501,7 @@ def main():
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir = Path(args.logs_dir)
+    scripts_dir = Path(args.scripts_dir)
 
     runs = load_results(str(res_path))
     print(f"Plotting results from {len(runs)} runs...")
@@ -494,12 +514,9 @@ def main():
     plot_acceptance_sweep(runs, out_dir)
     plot_heatmap(runs, out_dir)
     plot_utility_bar(runs, out_dir)
-
-    # New energy spike plot
-    plot_energy_spikes(logs_dir, out_dir)
+    plot_energy_spikes(scripts_dir, out_dir)
 
     print("\nAll figures saved.")
-
 
 
 if __name__ == "__main__":

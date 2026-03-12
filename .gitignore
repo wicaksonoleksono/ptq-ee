@@ -27,3 +27,4 @@ model_cache/
 *.bin
 *.safetensors
 *.ckpt
+.venv

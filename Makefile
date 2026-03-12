@@ -136,7 +136,7 @@ benchmark: dirs
 		--num_speculations $(NUM_SPEC) \
 		--num_samples $(NUM_SAMPLES) \
 		--max_steps $(MAX_STEPS) \
-		--sample False \
+		--sample True \
 		--output_dir ./logs
 
 benchmark-ss: benchmark
@@ -158,7 +158,7 @@ benchmark-all: dirs
 				--num_speculations $(NUM_SPEC) \
 				--num_samples $(NUM_SAMPLES) \
 				--max_steps $(MAX_STEPS) \
-				--sample False \
+				--sample True \
 				--output_dir ./logs || echo "WARNING: $$method/ss/$$task failed, continuing..."; \
 		done; \
 	done

@@ -200,14 +200,17 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 logits = logits_processors(input_ids, logits)
             next_token, _ = decode_next_token(logits=logits, token_idx=-1, sample=sample, temperature=temperature, top_k=top_k, top_p=top_p)
             
-            output_ids.append(next_token.item())
+            gen_token = next_token.item()
+            output_ids_step = [gen_token]
             input_ids = next_token.unsqueeze(0)
             return (
                 input_ids,
-                output_ids,
+                output_ids_step,
                 full_results.past_key_values,
                 0, # number of matches
                 0, # num speculations
+                [], # draft_ids_step
+                output_ids_step # truth_ids_step
             )
 
         draft_output_ids_tensor = torch.tensor(draft_output_ids).unsqueeze(0).to(input_ids)

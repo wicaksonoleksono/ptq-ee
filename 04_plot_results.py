@@ -436,7 +436,7 @@ def plot_energy_spikes(logs_dir: Path, out_dir: Path):
         found_files = list(Path(".").glob("progress_*.json"))
 
     if not found_files:
-        print(\"  [energy spikes] No progress backup files found, skipping spike plot.\")
+        print("  [energy spikes] No progress backup files found, skipping spike plot.")
         return
 
     for p_file in found_files:
@@ -445,38 +445,38 @@ def plot_energy_spikes(logs_dir: Path, out_dir: Path):
 
         if not data: continue
 
-        indices = [i.get(\"index\") for i in data]
-        joules = [i.get(\"joules\") for i in data]
+        indices = [i.get("index") for i in data]
+        joules = [i.get("joules") for i in data]
 
         # Determine method from filename
         # progress_llama2-13B__awq__self_speculative__cnn_dm_summarization.json
-        label = p_file.stem.replace(\"progress_\", \"\").replace(\"__cnn_dm_summarization\", \"\")
+        label = p_file.stem.replace("progress_", "").replace("__cnn_dm_summarization", "")
 
         ax.plot(indices, joules, label=label, alpha=0.8, linewidth=1.5)
 
-    ax.set_xlabel(\"Sample Index\")
-    ax.set_ylabel(\"Cumulative Energy (Joules)\")
-    ax.set_title(\"Energy Consumption Profile: PTQ × Decoding (Sample-by-Sample)\")
-    ax.legend(fontsize=7, loc=\"upper left\", bbox_to_anchor=(1, 1))
-    ax.grid(True, linestyle=\"--\", alpha=0.3)
+    ax.set_xlabel("Sample Index")
+    ax.set_ylabel("Cumulative Energy (Joules)")
+    ax.set_title("Energy Consumption Profile: PTQ × Decoding (Sample-by-Sample)")
+    ax.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1, 1))
+    ax.grid(True, linestyle="--", alpha=0.3)
 
-    path = out_dir / \"energy_spikes_profile.png\"
+    path = out_dir / "energy_spikes_profile.png"
     fig.tight_layout()
-    fig.savefig(path, bbox_inches=\"tight\")
+    fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
-    print(f\"  Saved: {path}\")
+    print(f"  Saved: {path}")
 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument(\"--results_json\", type=str, default=\"../results/results_summary.json\")
-    parser.add_argument(\"--logs_dir\", type=str, default=\"../logs\")
-    parser.add_argument(\"--output_dir\", type=str, default=\"../figures\")
+    parser.add_argument("--results_json", type=str, default="../results/results_summary.json")
+    parser.add_argument("--logs_dir", type=str, default="../logs")
+    parser.add_argument("--output_dir", type=str, default="../figures")
     args = parser.parse_args()
 
     res_path = Path(args.results_json)
     if not res_path.exists():
-        print(f\"ERROR: {res_path} not found. Run 03_collect_results.py first.\")
+        print(f"ERROR: {res_path} not found. Run 03_collect_results.py first.")
         return
 
     out_dir = Path(args.output_dir)
@@ -484,7 +484,7 @@ def main():
     logs_dir = Path(args.logs_dir)
 
     runs = load_results(str(res_path))
-    print(f\"Plotting results from {len(runs)} runs...\")
+    print(f"Plotting results from {len(runs)} runs...")
 
     plot_pareto(runs, out_dir)
     plot_energy_bar(runs, out_dir)
@@ -498,7 +498,7 @@ def main():
     # New energy spike plot
     plot_energy_spikes(logs_dir, out_dir)
 
-    print(\"\\nAll figures saved.\")
+    print("\nAll figures saved.")
 
 
 

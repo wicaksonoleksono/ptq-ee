@@ -223,27 +223,40 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
             logits = logits_processors(prefill_token_ids, logits)
         past_key_values = verify_results.past_key_values
         
-        verification_logits = logits[:, prompt_length - 1 :, :]
+        # We need the logits for the draft positions.
+        # If input_ids was [P1...Pn] and draft was [D1...Dk], prefill is [P1...Pn, D1...Dk]
+        # We want the next-token predictions for Pn, D1, D2... Dk
+        # This corresponds to indices n-1 to n+k-1 in the sequence dimension.
+        verification_logits = logits[:, prompt_length - 1 : prompt_length - 1 + len(draft_output_ids), :]
         verified_tokens, verified_probabilities = decode_next_token(logits=verification_logits, sample=sample, temperature=temperature, top_k=top_k, top_p=top_p)
 
         # 3. Match Checking
         number_of_matches = 0
-        if not sample:
-            for i in range(draft_output_ids_tensor.numel()):
+        if verified_probabilities is None or verified_probabilities.numel() == 0:
+            # Fallback to greedy if sampling fails or probs are empty
+            for i in range(len(draft_output_ids)):
+                if draft_output_ids[i] == verified_tokens[0, i]:
+                    number_of_matches += 1
+                else: break
+        elif not sample:
+            for i in range(len(draft_output_ids)):
                 if draft_output_ids[i] == verified_tokens[0, i]:
                     number_of_matches += 1
                 else: break
         else:
-            rand = torch.rand_like(draft_output_ids_tensor, dtype=torch.float)
-            for i in range(draft_output_ids_tensor.numel()):
-                # draft_probabilities[i] is a [1, Vocab] tensor
-                d_prob = draft_probabilities[i][0, draft_output_ids[i]].item()
-                v_prob = verified_probabilities[i, draft_output_ids[i]].item()
+            rand = torch.rand(len(draft_output_ids), device=input_ids.device)
+            for i in range(len(draft_output_ids)):
+                d_id = draft_output_ids[i]
+                # Ensure index safety
+                if i >= verified_probabilities.shape[0]: break
                 
-                if rand[0, i] < min(1, v_prob / d_prob):
+                d_prob = draft_probabilities[i][0, d_id].item()
+                v_prob = verified_probabilities[i, d_id].item()
+                
+                if rand[i] < min(1, v_prob / max(d_prob, 1e-10)):
                     number_of_matches += 1
                 else:
-                    # Sample from the difference distribution
+                    # Re-sample the current token from the adjusted distribution
                     diff = max_fn(verified_probabilities[i, :] - draft_probabilities[i][0, :])
                     verified_tokens[0][number_of_matches] = torch.multinomial(diff, num_samples=1).item()
                     break

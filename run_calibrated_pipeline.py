@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Parameters
 MODELS = ["facebook/layerskip-llama2-13B"]
-PTQ_METHODS = ["fp16", "awq", "gptq", "int8_bnb", "smoothquant"]
+PTQ_METHODS = ["fp32", "fp16", "awq", "gptq", "int8_bnb", "smoothquant"]
 TASKS = ["cnn_dm_summarization", "arc_challenge"]
 
 # Metric mapping for different tasks

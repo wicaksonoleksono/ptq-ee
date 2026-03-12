@@ -94,6 +94,17 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
             cache_dir=str(MODEL_CACHE),
         )
 
+    elif ptq_method == "fp32":
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_id_or_path, cache_dir=str(MODEL_CACHE)
+        )
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_id_or_path,
+            torch_dtype=torch.float32,
+            device_map=device,
+            cache_dir=str(MODEL_CACHE),
+        )
+
     elif ptq_method == "int8_bnb":
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_id_or_path, cache_dir=str(MODEL_CACHE)

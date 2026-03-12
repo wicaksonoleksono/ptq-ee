@@ -621,6 +621,66 @@ def plot_calibration_sweeps(logs_dir: Path, out_dir: Path):
         plt.close(fig)
         print(f"  Saved: {path}")
 
+def plot_efficiency_dashboard(runs: list, out_dir: Path):
+    """
+    Creates a 4-panel dashboard showing the most critical research insights.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    
+    # 1. Quality vs TPS (Pareto)
+    for r in runs:
+        tps, rl = r.get("tokens_per_sec"), r.get("rouge_l")
+        if tps and rl:
+            axes[0,0].scatter(tps, rl, color=PTQ_COLORS.get(r['ptq_method'], "#999"), 
+                             marker=TASK_MARKERS.get(r['task'], "o"), s=100, alpha=0.7)
+    axes[0,0].set_title("Quality vs. Throughput")
+    axes[0,0].set_xlabel("Tokens / Sec")
+    axes[0,0].set_ylabel("ROUGE-L")
+
+    # 2. TPS vs Energy
+    for r in runs:
+        tps, jpt = r.get("tokens_per_sec"), r.get("joules_per_token")
+        if tps and jpt:
+            axes[0,1].scatter(tps, jpt, color=PTQ_COLORS.get(r['ptq_method'], "#999"), 
+                             marker=TASK_MARKERS.get(r['task'], "o"), s=100, alpha=0.7)
+    axes[0,1].set_title("Throughput vs. Energy Cost")
+    axes[0,1].set_xlabel("Tokens / Sec")
+    axes[0,1].set_ylabel("Joules / Token")
+
+    # 3. Acceptance Rate by Method
+    groups = defaultdict(list)
+    for r in runs:
+        ar = r.get("acceptance_rate")
+        if ar: groups[r['ptq_method']].append(ar)
+    
+    if groups:
+        labels = [display_name(m) for m in sorted(groups.keys())]
+        values = [np.mean(groups[m]) for m in sorted(groups.keys())]
+        colors = [PTQ_COLORS.get(m, "#999") for m in sorted(groups.keys())]
+        axes[1,0].bar(labels, values, color=colors, edgecolor='black')
+        axes[1,0].set_title("Mean Acceptance Rate by Method")
+        axes[1,0].set_ylabel("Acceptance %")
+
+    # 4. VRAM vs Energy
+    for r in runs:
+        vram, jpt = r.get("gpu_mem_used_mb"), r.get("joules_per_token")
+        if vram and jpt:
+            axes[1,1].scatter(vram/1024, jpt, color=PTQ_COLORS.get(r['ptq_method'], "#999"), 
+                             marker=TASK_MARKERS.get(r['task'], "o"), s=100, alpha=0.7)
+    axes[1,1].set_title("VRAM Footprint vs. Energy Cost")
+    axes[1,1].set_xlabel("Peak VRAM (GB)")
+    axes[1,1].set_ylabel("Joules / Token")
+
+    for ax in axes.flat:
+        ax.grid(True, linestyle="--", alpha=0.3)
+    
+    plt.suptitle("Post-Training Quantization x LayerSkip Efficiency Dashboard", fontsize=20, y=0.95)
+    path = out_dir / "model_efficiency_dashboard.png"
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results_json", type=str,
@@ -653,6 +713,7 @@ def main():
     plot_energy_spikes(scripts_dir, out_dir)
     plot_quantization_early_exit_effects(scripts_dir, out_dir)
     plot_calibration_sweeps(scripts_dir, out_dir)
+    plot_efficiency_dashboard(runs, out_dir)
 
     print("\nAll figures saved.")
 

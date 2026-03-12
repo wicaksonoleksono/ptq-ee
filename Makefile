@@ -16,15 +16,16 @@ EXIT_LAYER     := 30
 NUM_SPEC       := 6
 NUM_SAMPLES    := 100
 MAX_STEPS      := 256
-
-ALL_METHODS    := fp16 int8_bnb awq gptq smoothquant
-ALL_TASKS      := cnn_dm_summarization xsum_summarization
+ALL_METHODS    := fp32 fp16 int8_bnb awq gptq smoothquant
+ALL_TASKS      := cnn_dm_summarization arc_challenge
 
 .PHONY: help dry-run dirs download \
-        quantize quantize-all quantize-fp16 quantize-int8 quantize-awq quantize-gptq quantize-smoothquant \
-        benchmark benchmark-ss benchmark-all sweep calibrate-and-run \
+        quantize quantize-all quantize-fp32 quantize-fp16 quantize-int8 quantize-awq quantize-gptq quantize-smoothquant \
+        benchmark benchmark-ss benchmark-all sweep \
+        calibrate-and-run \
         collect plot pipeline pipeline-calibrated \
         clean clean-logs clean-results clean-figures clean-models
+
 
 # ---------------------------------------------------------------------------
 help:
@@ -80,6 +81,9 @@ download: dirs
 # ---------------------------------------------------------------------------
 quantize: dirs
 	python 01_quantize.py --model $(MODEL) --method $(METHOD)
+
+quantize-fp32: dirs
+	python 01_quantize.py --model $(MODEL) --method fp32
 
 quantize-fp16: dirs
 	python 01_quantize.py --model $(MODEL) --method fp16

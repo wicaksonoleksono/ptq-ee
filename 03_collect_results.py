@@ -38,11 +38,22 @@ def main():
             runs_data.append(data)
 
     rows = []
+    # First, find the baseline speed for speedup calculation
+    fp16_ar_tps = None
+    for r in runs_data:
+        cfg = r.get("config", {})
+        if cfg.get("ptq_method") == "fp16" and cfg.get("generation_strategy") == "autoregressive":
+            fp16_ar_tps = r.get("efficiency_metrics", {}).get("tokens_per_second")
+            break
+
     for r in runs_data:
         config = r.get("config", {})
         quality = r.get("quality_metrics", {})
         efficiency = r.get("efficiency_metrics", {})
         energy = r.get("energy_metrics", {})
+        
+        tps = efficiency.get("tokens_per_second")
+        speedup = (tps / fp16_ar_tps) if (tps and fp16_ar_tps) else 1.0
         
         row = {
             "run_id": r.get("run_id"),
@@ -55,10 +66,12 @@ def main():
             "exit_layer": config.get("exit_layer"),
             "num_speculations": config.get("num_speculations"),
             
-            "tokens_per_sec": efficiency.get("tokens_per_second"),
+            "tokens_per_sec": tps,
             "decode_tps": efficiency.get("decode_tps"),
             "prefill_tps": efficiency.get("prefill_tps"),
             "ms_per_token": efficiency.get("time_per_token_ms"),
+            "speedup_vs_fp16_ar": speedup,
+            "acceptance_rate": efficiency.get("acceptance_rate"),
             
             "rouge_l": quality.get("rouge_l"),
             "rouge_1": quality.get("rouge_1"),
@@ -68,9 +81,9 @@ def main():
             "joules_per_token": energy.get("joules_per_token"),
             "total_joules": energy.get("total_joules"),
             "avg_power_w": energy.get("avg_power_watts"),
-            "gpu_util": energy.get("avg_gpu_util_percent"),
-            "cpu_util": energy.get("avg_cpu_util_percent"),
-            "gpu_mem_used_mb": efficiency.get("peak_vram_gb", 0) * 1024, # convert GB to MB for the plotter
+            "gpu_util_percent": energy.get("avg_gpu_util_percent"),
+            "cpu_util_percent": energy.get("avg_cpu_util_percent"),
+            "gpu_mem_used_mb": efficiency.get("peak_vram_gb", 0) * 1024,
             # Full token logs if needed
             "full_audit_trail": r.get("raw_layerskip_metrics")
         }

@@ -56,6 +56,7 @@ def run_calibrated_pipeline():
         pd = None
 
     summary_csv = SCRIPT_DIR.parent / "results" / "calibration_summary.csv"
+    summary_csv.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
     master_summary = []
     if summary_csv.exists() and pd:
         try:

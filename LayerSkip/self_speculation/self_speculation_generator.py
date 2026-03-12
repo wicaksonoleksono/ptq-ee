@@ -190,6 +190,25 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
             draft_input_ids = torch.tensor([[draft_next_token]]).to(draft_input_ids)
             if draft_next_token in eos_token_ids: break
 
+        # Handle case where draft_output_ids is empty (e.g. if the first draft token was EOS)
+        if not draft_output_ids:
+            # We must generate at least one token via the full model
+            full_results = forward(model, input_ids.int(), past_key_values)
+            logits = full_results.logits
+            if logits_processors:
+                logits = logits_processors(input_ids, logits)
+            next_token, _ = decode_next_token(logits=logits, token_idx=-1, sample=sample, temperature=temperature, top_k=top_k, top_p=top_p)
+            
+            output_ids.append(next_token.item())
+            input_ids = next_token.unsqueeze(0)
+            return (
+                input_ids,
+                output_ids,
+                full_results.past_key_values,
+                0, # number of matches
+                0, # num speculations
+            )
+
         draft_output_ids_tensor = torch.tensor(draft_output_ids).unsqueeze(0).to(input_ids)
         prefill_token_ids = torch.cat([input_ids, draft_output_ids_tensor], dim=-1)
 

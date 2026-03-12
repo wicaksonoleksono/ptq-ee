@@ -80,36 +80,12 @@ def run_calibrated_pipeline():
 
                 print(f"\n{'='*80}\nStarting Calibration for {method} on {task}\n{'='*80}")
                 
-                # ... (ar baseline step) ...
-                ar_run_id = f"{model_name}__{method}__autoregressive__{task}"
-                cmd_ar = [
-                    "python", str(SCRIPT_DIR / "02_run_benchmark.py"),
-                    "--model", model,
-                    "--ptq_method", method,
-                    "--task", task,
-                    "--generation_strategy", "autoregressive",
-                    "--num_samples", str(CALIB_SAMPLES),
-                    "--sample", "False",
-                    "--output_dir", str(CALIB_DIR)
-                ]
-                run_cmd(cmd_ar)
-                
-                ar_data = get_latest_json(CALIB_DIR, ar_run_id)
-                if not ar_data:
-                    print(f"Failed to get baseline data for {method} / {task}. Skipping.")
-                    continue
-                
-                metric_key = TASK_METRIC_KEY.get(task, "rouge_l")
-                baseline_score = ar_data.get("quality_metrics", {}).get(metric_key, 0.0)
-                target_score = baseline_score * TOLERANCE
-                print(f"Baseline {metric_key}: {baseline_score:.4f} -> Target: {target_score:.4f}")
-                
-                # 2. Sweep Self-Speculative Configs
+                # 1. Sweep Self-Speculative Configs
                 sweep_results = []
                 for el in EXIT_LAYERS:
                     for ns in NUM_SPECS:
                         # Check if this specific sweep step already exists
-                        ss_run_id = f"{model_name}__{method}__self_speculative_L{el}_K{ns}__{task}"
+                        ss_run_id = f"calibration__{model_name}__{method}__self_speculative_L{el}_K{ns}__{task}"
                         ss_data = get_latest_json(CALIB_DIR, ss_run_id)
                         
                         if not ss_data:
@@ -136,6 +112,7 @@ def run_calibrated_pipeline():
                             print(f"[Skip] Sweep step {ss_run_id} already exists.")
                         
                         if ss_data:
+                            metric_key = TASK_METRIC_KEY.get(task, "rouge_l")
                             score = ss_data.get("quality_metrics", {}).get(metric_key, 0.0)
                             tps = ss_data.get("efficiency_metrics", {}).get("decode_tps", 0.0)
                             jpt = ss_data.get("energy_metrics", {}).get("joules_per_token", 0.0)
@@ -152,7 +129,17 @@ def run_calibrated_pipeline():
                                 "acceptance_rate": ar
                             })
                 
-                # Save Sweep Data
+                # 2. Identify Baseline (Layer 40)
+                baseline_obj = next((c for c in sweep_results if c["exit_layer"] == 40), None)
+                if not baseline_obj:
+                    print(f"ERROR: Could not find Layer 40 baseline for {method}. Skipping.")
+                    continue
+                
+                baseline_score = baseline_obj["score"]
+                target_score = baseline_score * TOLERANCE
+                print(f"Target Score (95% of L40): {target_score:.4f}")
+
+                # 3. Save Sweep Data
                 if sweep_results:
                     if pd:
                         sweep_df = pd.DataFrame(sweep_results)
@@ -160,7 +147,7 @@ def run_calibrated_pipeline():
                         sweep_df.to_csv(sweep_csv, index=False)
                         print(f"Saved sweep CSV to {sweep_csv}")
                             
-                # 3. Select Best Config (Highest Acceptance Rate among those > 95% baseline)
+                # 4. Select Best Config (Highest Acceptance Rate among those > 95% baseline)
                 valid_configs = [c for c in sweep_results if c["score"] >= target_score]
                 if not valid_configs:
                     print(f"WARNING: No config met target for {method}. Falling back to best overall AR.")

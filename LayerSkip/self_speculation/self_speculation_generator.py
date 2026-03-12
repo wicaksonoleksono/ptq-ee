@@ -232,10 +232,16 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         else:
             rand = torch.rand_like(draft_output_ids_tensor, dtype=torch.float)
             for i in range(draft_output_ids_tensor.numel()):
-                if rand[0, i] < min(1, verified_probabilities[i, draft_output_ids[i]].item() / draft_probabilities[i][0, draft_output_ids[i]].item()):
+                # draft_probabilities[i] is a [1, Vocab] tensor
+                d_prob = draft_probabilities[i][0, draft_output_ids[i]].item()
+                v_prob = verified_probabilities[i, draft_output_ids[i]].item()
+                
+                if rand[0, i] < min(1, v_prob / d_prob):
                     number_of_matches += 1
                 else:
-                    verified_tokens[0][number_of_matches] = torch.multinomial(max_fn((verified_probabilities[i, :] - draft_probabilities[i])), num_samples=1).item()
+                    # Sample from the difference distribution
+                    diff = max_fn(verified_probabilities[i, :] - draft_probabilities[i][0, :])
+                    verified_tokens[0][number_of_matches] = torch.multinomial(diff, num_samples=1).item()
                     break
 
         new_output_ids = draft_output_ids[:number_of_matches]

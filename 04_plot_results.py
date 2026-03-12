@@ -424,16 +424,16 @@ def plot_acceptance_sweep(runs: list, out_dir: Path):
 # Main
 # ---------------------------------------------------------------------------
 def plot_energy_spikes(logs_dir: Path, out_dir: Path):
-    \"\"\"
+    """
     Reads progress_*.json backup files to plot cumulative Joules across the run
     to show energy 'spikes' and slopes for different methods.
-    \"\"\"
+    """
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    found_files = list(logs_dir.glob(\"progress_*.json\"))
+    found_files = list(logs_dir.glob("progress_*.json"))
     if not found_files:
         # Check current dir as well
-        found_files = list(Path(\".\").glob(\"progress_*.json\"))
+        found_files = list(Path(".").glob("progress_*.json"))
 
     if not found_files:
         print(\"  [energy spikes] No progress backup files found, skipping spike plot.\")

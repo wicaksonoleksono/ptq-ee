@@ -71,6 +71,8 @@ def main():
             "gpu_util": energy.get("avg_gpu_util_percent"),
             "cpu_util": energy.get("avg_cpu_util_percent"),
             "gpu_mem_used_mb": efficiency.get("peak_vram_gb", 0) * 1024, # convert GB to MB for the plotter
+            # Full token logs if needed
+            "full_audit_trail": r.get("raw_layerskip_metrics")
         }
         rows.append(row)
 

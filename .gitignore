@@ -21,8 +21,6 @@ logs/
 model_cache/
 
 # Results / experiment outputs
-results/
-progress_*.json
 
 # ML model weights
 *.pt

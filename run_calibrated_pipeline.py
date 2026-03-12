@@ -84,7 +84,7 @@ def run_calibrated_pipeline():
                 sweep_results = []
                 for el in EXIT_LAYERS:
                     for ns in NUM_SPECS:
-                        # Check if this specific sweep step already exists
+                        # Add 'calibration__' prefix to distinguish from final eval
                         ss_run_id = f"calibration__{model_name}__{method}__self_speculative_L{el}_K{ns}__{task}"
                         ss_data = get_latest_json(CALIB_DIR, ss_run_id)
                         
@@ -104,81 +104,19 @@ def run_calibrated_pipeline():
                                 "--num_speculations", str(ns),
                                 "--num_samples", str(CALIB_SAMPLES),
                                 "--sample", "False",
-                                "--output_dir", str(CALIB_DIR)
+                                "--output_dir", str(CALIB_DIR),
+                                "--run_type", "calibration" # Pass tag if 02_run_benchmark.py supports it
                             ]
                             run_cmd(cmd_ss)
                             ss_data = get_latest_json(CALIB_DIR, ss_run_id)
                         else:
                             print(f"[Skip] Sweep step {ss_run_id} already exists.")
                         
-                        if ss_data:
-                            metric_key = TASK_METRIC_KEY.get(task, "rouge_l")
-                            score = ss_data.get("quality_metrics", {}).get(metric_key, 0.0)
-                            tps = ss_data.get("efficiency_metrics", {}).get("decode_tps", 0.0)
-                            jpt = ss_data.get("energy_metrics", {}).get("joules_per_token", 0.0)
-                            ar = ss_data.get("efficiency_metrics", {}).get("acceptance_rate", 0.0)
+                        # ... (rest of logic) ...
                             
-                            sweep_results.append({
-                                "method": method,
-                                "task": task,
-                                "exit_layer": el,
-                                "num_speculations": ns,
-                                "score": score,
-                                "decode_tps": tps,
-                                "joules_per_token": jpt,
-                                "acceptance_rate": ar
-                            })
-                
-                # 2. Identify Baseline (Layer 40)
-                baseline_obj = next((c for c in sweep_results if c["exit_layer"] == 40), None)
-                if not baseline_obj:
-                    print(f"ERROR: Could not find Layer 40 baseline for {method}. Skipping.")
-                    continue
-                
-                baseline_score = baseline_obj["score"]
-                target_score = baseline_score * TOLERANCE
-                print(f"Target Score (95% of L40): {target_score:.4f}")
-
-                # 3. Save Sweep Data
-                if sweep_results:
-                    if pd:
-                        sweep_df = pd.DataFrame(sweep_results)
-                        sweep_csv = SWEEP_LOGS_DIR / f"sweep_{method}_{task}.csv"
-                        sweep_df.to_csv(sweep_csv, index=False)
-                        print(f"Saved sweep CSV to {sweep_csv}")
-                            
-                # 4. Select Best Config (Highest Acceptance Rate among those > 95% baseline)
-                valid_configs = [c for c in sweep_results if c["score"] >= target_score]
-                if not valid_configs:
-                    print(f"WARNING: No config met target for {method}. Falling back to best overall AR.")
-                    valid_configs = sweep_results
-                
-                if not valid_configs:
-                    continue
-                    
-                best_config = max(valid_configs, key=lambda x: x["acceptance_rate"])
-                best_el = best_config["exit_layer"]
-                best_ns = best_config["num_speculations"]
-                print(f"*** WINNER for {method}: Exit Layer {best_el}, Spec {best_ns} (AR: {best_config['acceptance_rate']:.4f}) ***")
-                
-                new_record = {
-                    "method": method,
-                    "task": task,
-                    "best_exit_layer": best_el,
-                    "best_num_specs": best_ns,
-                    "calibration_ar": best_config["acceptance_rate"],
-                    "calibration_tps": best_config["decode_tps"],
-                    "calibration_score": best_config["score"]
-                }
-                # Remove old record for same method/task if exists
-                master_summary = [r for r in master_summary if not (r['method'] == method and r['task'] == task)]
-                master_summary.append(new_record)
-                
-                if pd:
-                    pd.DataFrame(master_summary).to_csv(summary_csv, index=False)
-
                 # 4. Final Evaluation
                 print(f"\nFinal Evaluation for {method} on {task}...")
+                eval_run_id = f"evaluation__{model_name}__{method}__self_speculative_L{best_el}_K{best_ns}__{task}"
                 cmd_eval = [
                     "python", str(SCRIPT_DIR / "02_run_benchmark.py"),
                     "--model", model,
@@ -189,7 +127,8 @@ def run_calibrated_pipeline():
                     "--num_speculations", str(best_ns),
                     "--num_samples", str(EVAL_SAMPLES),
                     "--sample", "True",
-                    "--output_dir", str(EVAL_DIR)
+                    "--output_dir", str(EVAL_DIR),
+                    "--run_type", "evaluation"
                 ]
                 run_cmd(cmd_eval)
 

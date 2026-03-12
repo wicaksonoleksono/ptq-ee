@@ -21,6 +21,7 @@ from self_speculation.speculative_streamer import SpeculativeTextStreamer
 from self_speculation.llama_model_utils import (
     crop_past_key_values,
     decode_next_token,
+    forward,
     forward_early,
     forward_remainder,
 )

@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Parameters
 MODELS = ["facebook/layerskip-llama2-13B"]
-PTQ_METHODS = ["fp32", "fp16", "awq", "gptq", "int8_bnb", "smoothquant"]
+PTQ_METHODS = ["fp16", "awq", "gptq", "int8_bnb", "smoothquant"]
 TASKS = ["cnn_dm_summarization", "arc_challenge"]
 
 # Metric mapping for different tasks
@@ -18,8 +18,8 @@ TASK_METRIC_KEY = {
 
 EXIT_LAYERS = [10, 20, 30, 40] # Llama-2 13B has 40 layers
 NUM_SPECS = [6] # Fixed at 6 for research consistency
-CALIB_SAMPLES = 30
-EVAL_SAMPLES = 50
+CALIB_SAMPLES = 15
+EVAL_SAMPLES = 25
 TOLERANCE = 0.95 # Accept config if metric >= 95% of full-depth baseline
 
 SCRIPT_DIR = Path(__file__).parent.resolve()

@@ -14,10 +14,12 @@ TASK           := cnn_dm_summarization
 STRATEGY       := self_speculative
 EXIT_LAYER     := 30
 NUM_SPEC       := 6
-NUM_SAMPLES    := 100
+NUM_SAMPLES    := 25
 MAX_STEPS      := 256
-ALL_METHODS    := fp32 fp16 int8_bnb awq gptq smoothquant
+
+ALL_METHODS    := fp16 int8_bnb awq gptq smoothquant
 ALL_TASKS      := cnn_dm_summarization arc_challenge
+
 
 .PHONY: help dry-run dirs download \
         quantize quantize-all quantize-fp32 quantize-fp16 quantize-int8 quantize-awq quantize-gptq quantize-smoothquant \

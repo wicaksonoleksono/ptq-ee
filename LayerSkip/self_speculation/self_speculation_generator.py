@@ -224,29 +224,24 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
         past_key_values = verify_results.past_key_values
         
         # SLICING FIX:
-        # In the official code, we need logits for the positions that verify the draft tokens,
-        # plus ONE more for the next bonus token.
-        # If prompt len is N, and draft len is K, prefill_token_ids has length N+K.
-        # Indices [N-1, N, ..., N+K-1] predict tokens [N, N+1, ..., N+K].
-        # There are K+1 such indices.
-        verification_logits = logits[:, prompt_length - 1 : prompt_length - 1 + len(draft_output_ids) + 1, :]
+        # Instead of using absolute indices (prompt_length), we use relative indices from the end.
+        # logits from forward_remainder should correspond to the tokens in prefill_token_ids.
+        # We need the last K+1 positions (where K is len(draft)).
+        num_to_verify = len(draft_output_ids)
+        verification_logits = logits[:, -(num_to_verify + 1) :, :]
         verified_tokens, verified_probabilities = decode_next_token(logits=verification_logits, sample=sample, temperature=temperature, top_k=top_k, top_p=top_p)
 
         # 3. Match Checking
         number_of_matches = 0
-        max_matches = len(draft_output_ids)
-        
         if not sample:
-            # verified_tokens has shape [1, K+1]. 
-            # We compare draft[0:K] with verified[0:K].
-            for i in range(max_matches):
+            # verified_tokens shape is [1, K+1]
+            for i in range(num_to_verify):
                 if draft_output_ids[i] == verified_tokens[0, i]:
                     number_of_matches += 1
                 else: break
         else:
-            # Rejection Sampling
-            rand = torch.rand(max_matches, device=input_ids.device)
-            for i in range(max_matches):
+            rand = torch.rand(num_to_verify, device=input_ids.device)
+            for i in range(num_to_verify):
                 d_id = draft_output_ids[i]
                 d_prob = draft_probabilities[i][0, d_id].item()
                 v_prob = verified_probabilities[i, d_id].item()
@@ -254,15 +249,11 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
                 if rand[i] < min(1, v_prob / max(d_prob, 1e-10)):
                     number_of_matches += 1
                 else:
-                    # Sample from (verified - draft)
                     diff = max_fn(verified_probabilities[i, :] - draft_probabilities[i][0, :])
                     verified_tokens[0][number_of_matches] = torch.multinomial(diff, num_samples=1).item()
                     break
 
-        # verified_tokens[0][number_of_matches] is ALWAYS our next 'correct' token
-        # whether it was a match or a resample.
         bonus_token = verified_tokens[0, number_of_matches].item()
-        
         new_output_ids = draft_output_ids[:number_of_matches]
         new_output_ids.append(bonus_token)
         

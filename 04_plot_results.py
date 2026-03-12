@@ -485,6 +485,93 @@ def plot_energy_spikes(scripts_dir: Path, out_dir: Path):
 # Main
 # ---------------------------------------------------------------------------
 
+def plot_quantization_early_exit_effects(logs_dir: Path, out_dir: Path):
+    """
+    Plots the effect of Quantization on Early Exit dynamics using the calibration sweep logs.
+    Shows Exit Layer vs: Acceptance Rate, Joules per Token, and Inference Speed (Decode TPS).
+    """
+    calib_dir = logs_dir / "calibration"
+    if not calib_dir.exists():
+        print("  [early exit sweep] Calibration directory not found, skipping sweep plots.")
+        return
+        
+    found_files = list(calib_dir.glob("*.json"))
+    if not found_files:
+        return
+        
+    # Group data by (ptq_method, exit_layer)
+    from collections import defaultdict
+    data = defaultdict(lambda: defaultdict(lambda: {"ar": [], "jpt": [], "tps": []}))
+    
+    for p_file in found_files:
+        with open(p_file) as f:
+            d = json.load(f)
+        
+        cfg = d.get("config", {})
+        if cfg.get("generation_strategy") != "self_speculative":
+            continue
+            
+        ptq = cfg.get("ptq_method", "fp16")
+        el = cfg.get("exit_layer")
+        
+        eff = d.get("efficiency_metrics", {})
+        en = d.get("energy_metrics", {})
+        
+        ar = eff.get("acceptance_rate")
+        tps = eff.get("decode_tps")
+        jpt = en.get("joules_per_token")
+        
+        if el is not None:
+            if ar is not None: data[ptq][el]["ar"].append(ar)
+            if tps is not None: data[ptq][el]["tps"].append(tps)
+            if jpt is not None: data[ptq][el]["jpt"].append(jpt)
+
+    if not data:
+        return
+
+    # Create 3 subplots
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    
+    for ptq, layers in sorted(data.items()):
+        sorted_layers = sorted(layers.keys())
+        color = PTQ_COLORS.get(ptq, "#999")
+        
+        y_ar = [np.mean(layers[l]["ar"]) for l in sorted_layers if layers[l]["ar"]]
+        y_tps = [np.mean(layers[l]["tps"]) for l in sorted_layers if layers[l]["tps"]]
+        y_jpt = [np.mean(layers[l]["jpt"]) for l in sorted_layers if layers[l]["jpt"]]
+        
+        # Only plot if we have full matching data (simplification)
+        if len(y_ar) == len(sorted_layers):
+            axes[0].plot(sorted_layers, y_ar, marker='o', label=ptq, color=color, linewidth=2)
+        if len(y_tps) == len(sorted_layers):
+            axes[1].plot(sorted_layers, y_tps, marker='s', label=ptq, color=color, linewidth=2)
+        if len(y_jpt) == len(sorted_layers):
+            axes[2].plot(sorted_layers, y_jpt, marker='^', label=ptq, color=color, linewidth=2)
+
+    axes[0].set_title("Acceptance Rate vs Exit Layer")
+    axes[0].set_ylabel("Acceptance Rate")
+    axes[0].set_xlabel("Exit Layer")
+    
+    axes[1].set_title("Inference Speed vs Exit Layer")
+    axes[1].set_ylabel("Decode TPS")
+    axes[1].set_xlabel("Exit Layer")
+    
+    axes[2].set_title("Energy vs Exit Layer")
+    axes[2].set_ylabel("Joules / Token")
+    axes[2].set_xlabel("Exit Layer")
+
+    for ax in axes:
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.legend()
+        
+    plt.suptitle("The Effect of PTQ on Early Exit Dynamics", fontsize=16, y=1.05)
+    
+    path = out_dir / "quantization_early_exit_effects.png"
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {path}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results_json", type=str,
@@ -515,6 +602,7 @@ def main():
     plot_heatmap(runs, out_dir)
     plot_utility_bar(runs, out_dir)
     plot_energy_spikes(scripts_dir, out_dir)
+    plot_quantization_early_exit_effects(scripts_dir, out_dir)
 
     print("\nAll figures saved.")
 

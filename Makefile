@@ -22,8 +22,8 @@ ALL_TASKS      := cnn_dm_summarization xsum_summarization
 
 .PHONY: help dry-run dirs download \
         quantize quantize-all quantize-fp16 quantize-int8 quantize-awq quantize-gptq quantize-smoothquant \
-        benchmark benchmark-ss benchmark-all sweep \
-        collect plot pipeline \
+        benchmark benchmark-ss benchmark-all sweep calibrate-and-run \
+        collect plot pipeline pipeline-calibrated \
         clean clean-logs clean-results clean-figures clean-models
 
 # ---------------------------------------------------------------------------
@@ -35,16 +35,17 @@ help:
 	@echo "All benchmarks now use SELF-SPECULATIVE (Early Exit) by default."
 	@echo ""
 	@echo "Pipeline:"
-	@echo "  make download      Phase 0 — download all datasets"
-	@echo "  make quantize      Phase 1 — quantize MODEL with METHOD"
-	@echo "  make quantize-all  Phase 1 — quantize 13B with ALL methods"
-	@echo "  make sweep         Phase 2 — find best exit_layer + num_speculations"
-	@echo "  make benchmark     Phase 3 — run one benchmark (SS)"
-	@echo "  make benchmark-ss  Phase 3 — self-speculative benchmark"
-	@echo "  make benchmark-all Phase 3 — ALL methods × tasks using SS decoding"
-	@echo "  make collect       Phase 4 — aggregate logs/ -> results/"
-	@echo "  make plot          Phase 5 — generate figures/"
-	@echo "  make pipeline      ALL phases end-to-end"
+	@echo "  make download           Phase 0 — download all datasets"
+	@echo "  make quantize           Phase 1 — quantize MODEL with METHOD"
+	@echo "  make quantize-all       Phase 1 — quantize 13B with ALL methods"
+	@echo "  make sweep              Phase 2 — find best exit_layer + num_speculations"
+	@echo "  make calibrate-and-run  Phase 2+3 — Auto-calibrate sweep and evaluate"
+	@echo "  make benchmark          Phase 3 — run one benchmark (SS)"
+	@echo "  make benchmark-ss       Phase 3 — self-speculative benchmark"
+	@echo "  make benchmark-all      Phase 3 — ALL methods × tasks using SS decoding"
+	@echo "  make collect            Phase 4 — aggregate logs/ -> results/"
+	@echo "  make plot               Phase 5 — generate figures/"
+	@echo "  make pipeline-calibrated ALL phases end-to-end (strict protocol)"
 	@echo ""
 	@echo "Shortcuts:"
 	@echo "  make quantize-fp16 / quantize-int8 / quantize-awq / quantize-gptq / quantize-smoothquant"
@@ -124,7 +125,17 @@ sweep: dirs
 	@echo "Sweep done. Check logs/sweep/"
 
 # ---------------------------------------------------------------------------
+# Phase 2b: Calibrate and Run
+# ---------------------------------------------------------------------------
+calibrate-and-run: dirs
+	@echo "========================================"
+	@echo "Phase 2b: Running Auto-Calibration Protocol"
+	@echo "========================================"
+	python run_calibrated_pipeline.py
+
+# ---------------------------------------------------------------------------
 # Phase 3: Benchmark
+
 # ---------------------------------------------------------------------------
 benchmark: dirs
 	python 02_run_benchmark.py \
@@ -186,9 +197,9 @@ plot-details: dirs
 	python 05_plot_speculation_details.py --logs_dir . --output_dir ./figures
 
 # ---------------------------------------------------------------------------
-# Full pipeline — 13B × 5 methods × 2 strategies × 2 tasks = 20 benchmark runs
+# Full pipeline
 # ---------------------------------------------------------------------------
-pipeline: download quantize-all benchmark-all collect plot plot-details
+pipeline-calibrated: download quantize-all calibrate-and-run collect plot plot-details
 	@echo ""
 	@echo "========================================"
 	@echo "Pipeline complete!"
@@ -196,7 +207,7 @@ pipeline: download quantize-all benchmark-all collect plot plot-details
 	@echo "  Figures: ./figures/"
 	@echo "========================================"
 
-# ---------------------------------------------------------------------------
+pipeline: pipeline-calibrated
 clean: clean-logs clean-results clean-figures
 
 clean-logs:

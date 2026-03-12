@@ -305,10 +305,6 @@ def run_benchmark(args):
     print(
         f"[Benchmark] Running {args.task} | {args.generation_strategy} | {args.num_samples} samples ..."
     )
-    reset_vram_stats()
-
-    # Generate a unique run ID for this specific configuration
-    run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
 
     meter.start()
     t_bench_start = time.perf_counter()
@@ -355,7 +351,6 @@ def run_benchmark(args):
     acceptance_rate = metric_result.get("acceptance_rate", {}).get("mean", None)
 
     # Build output JSON
-    run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
     result = {
         "run_id": run_id,
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",

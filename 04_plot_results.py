@@ -572,6 +572,55 @@ def plot_quantization_early_exit_effects(logs_dir: Path, out_dir: Path):
     plt.close(fig)
     print(f"  Saved: {path}")
 
+def plot_calibration_sweeps(logs_dir: Path, out_dir: Path):
+    """
+    Plots Score vs. Exit Layer for every method/task to show the calibration frontier.
+    Uses the CSV files in logs/sweeps/.
+    """
+    import pandas as pd
+    sweep_dir = logs_dir / "sweeps"
+    if not sweep_dir.exists():
+        print("  [calibration sweep] Sweep directory not found, skipping frontier plots.")
+        return
+        
+    csv_files = list(sweep_dir.glob("sweep_*.csv"))
+    if not csv_files:
+        return
+
+    # Group by task
+    tasks_data = defaultdict(list)
+    for f in csv_files:
+        df = pd.read_csv(f)
+        task = df['task'].iloc[0] if 'task' in df.columns else "unknown"
+        tasks_data[task].append(df)
+
+    for task, dfs in tasks_data.items():
+        fig, ax = plt.subplots(figsize=(8, 5))
+        
+        for df in dfs:
+            ptq = df['method'].iloc[0]
+            color = PTQ_COLORS.get(ptq, "#999")
+            
+            # Sort by exit_layer
+            df = df.sort_values('exit_layer')
+            
+            ax.plot(df['exit_layer'], df['score'], marker='o', label=display_name(ptq), color=color, linewidth=2)
+            
+        ax.set_title(f"Calibration Frontier: Quality vs. Exit Layer ({task})")
+        ax.set_xlabel("Exit Layer Index")
+        ax.set_ylabel("Validation Score (ROUGE/Acc)")
+        ax.axhline(y=0.0, color='black', alpha=0.1) # base
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.legend()
+        
+        # Save per task
+        safe_task = task.replace("/", "_")
+        path = out_dir / f"calibration_frontier_{safe_task}.png"
+        fig.tight_layout()
+        fig.savefig(path)
+        plt.close(fig)
+        print(f"  Saved: {path}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results_json", type=str,
@@ -603,6 +652,7 @@ def main():
     plot_utility_bar(runs, out_dir)
     plot_energy_spikes(scripts_dir, out_dir)
     plot_quantization_early_exit_effects(scripts_dir, out_dir)
+    plot_calibration_sweeps(scripts_dir, out_dir)
 
     print("\nAll figures saved.")
 

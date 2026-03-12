@@ -190,10 +190,20 @@ def run_benchmark(args):
     # Device
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # Generate a unique run ID for this specific configuration
+    # Add exit_layer and num_speculations to the ID for self_speculative so sweeps don't overwrite each other
+    if args.generation_strategy == "self_speculative":
+        config_suffix = f"_L{args.exit_layer}_K{args.num_speculations}"
+    elif args.generation_strategy == "adaptive":
+        config_suffix = f"_T{args.adaptive_threshold}"
+    else:
+        config_suffix = ""
+        
+    run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}{config_suffix}__{args.task}"
+    
     # 1. Skip check & Resume Logic
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
     
     # Check if FINAL result exists
     existing_results = list(out_dir.glob(f"{run_id}__*.json"))
@@ -325,11 +335,13 @@ def run_benchmark(args):
 
     # Calculate total tokens from metrics
     # EvaluationMetrics uses Mean() for total_time and tokens_per_second.
-    # Total tokens = avg_tps * total_time_across_all_samples
+    # Total tokens = avg_tps * avg_total_time * actual_samples_run
     avg_tps = metric_result.get("tokens_per_second", {}).get("mean", 0.0)
     avg_total_time = metric_result.get("total_time", {}).get("mean", 0.0)
-    # The benchmark loop runs for args.num_samples
-    total_tokens_est = avg_tps * avg_total_time * args.num_samples
+    
+    # We should use the number of samples actually processed
+    num_processed = args.num_samples - start_index
+    total_tokens_est = avg_tps * avg_total_time * num_processed
 
     joules_per_token = (
         (energy_summary["total_joules"] / total_tokens_est)

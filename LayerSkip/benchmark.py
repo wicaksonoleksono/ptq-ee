@@ -101,10 +101,12 @@ class EvaluationMetrics:
             metric.update(torch.tensor(generation_result.tokens_per_second))
 
         for metric in self.prefill_tps.values():
-            metric.update(torch.tensor(generation_result.prefill_tps))
+            val = getattr(generation_result, "prefill_tps", 0.0)
+            metric.update(torch.tensor(val if val is not None else 0.0))
 
         for metric in self.decode_tps.values():
-            metric.update(torch.tensor(generation_result.decode_tps))
+            val = getattr(generation_result, "decode_tps", 0.0)
+            metric.update(torch.tensor(val if val is not None else 0.0))
 
     def compute(self) -> Dict[str, torch.Tensor]:
         return {
@@ -235,27 +237,32 @@ def benchmark(
         if i < start_index:
             continue
             
-        # Start meter specifically for this inference
-        if meter: meter.start()
-        
+        # Record state before this specific inference
+        # Note: We rely on the meter being started by the wrapper script (02_run_benchmark.py)
+        # We do NOT call meter.start() here because it clears the history.
+        joules_before = meter.joules if meter else 0.0
         t_start = time.time()
+        
         response: GenerationResult = generator.generate(
             prompt=example.input,
             generation_config=generation_config,
         )
-        t_end = time.time()
         
-        # Stop meter immediately after inference
-        if meter: meter.stop()
+        t_end = time.time()
+        joules_after = meter.joules if meter else 0.0
         
         duration = t_end - t_start
+        joules_this_sample = joules_after - joules_before
         
         # Get granular energy stats for this specific slice
-        energy_summary = meter.summary() if meter else {}
-        joules_this_sample = energy_summary.get("total_joules", 0.0)
-        avg_watts_this_sample = energy_summary.get("avg_power_watts", 0.0)
-        avg_gpu_util = energy_summary.get("avg_gpu_util_percent", 0.0)
-        avg_cpu_util = energy_summary.get("avg_cpu_util_percent", 0.0)
+        # Since the meter is running in background, avg_power is total_joules / total_time
+        avg_watts_this_sample = (joules_this_sample / duration) if duration > 0 else 0.0
+        
+        # Hardware util needs current instantaneous samples or an average since last sample.
+        # For simplicity, we'll use the summary which gives average since the meter started.
+        summary = meter.summary() if meter else {}
+        avg_gpu_util = summary.get("avg_gpu_util_percent", 0.0)
+        avg_cpu_util = summary.get("avg_cpu_util_percent", 0.0)
 
         print(
             f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W, GPU: {avg_gpu_util:.1f}%, CPU: {avg_cpu_util:.1f}%)"

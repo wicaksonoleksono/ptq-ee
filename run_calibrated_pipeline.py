@@ -91,7 +91,7 @@ def run_calibrated_pipeline():
                 sweep_results = []
                 for el in EXIT_LAYERS:
                     for ns in NUM_SPECS:
-                        ss_run_id = f"{model_name}__{method}__self_speculative__{task}"
+                        ss_run_id = f"{model_name}__{method}__self_speculative_L{el}_K{ns}__{task}"
                         # Clean progress file
                         for p in glob.glob(f"{CALIB_DIR}/progress_{ss_run_id}*.json"):
                             try: os.remove(p)

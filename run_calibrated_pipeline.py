@@ -8,21 +8,29 @@ from pathlib import Path
 # Parameters
 MODELS = ["facebook/layerskip-llama2-13B"]
 PTQ_METHODS = ["fp16", "awq", "gptq", "int8_bnb", "smoothquant"]
-TASKS = ["cnn_dm_summarization", "xsum_summarization"]
+TASKS = ["cnn_dm_summarization", "arc_challenge"]
 
-EXIT_LAYERS = [20, 30]
+# Metric mapping for different tasks
+TASK_METRIC_KEY = {
+    "cnn_dm_summarization": "rouge_l",
+    "arc_challenge": "exact_match", # In LayerSkip, multiple choice usually uses exact_match or accuracy
+}
+
+EXIT_LAYERS = [10, 20, 30, 40] # Llama-2 13B has 40 layers
 NUM_SPECS = [4, 6]
 CALIB_SAMPLES = 30
 EVAL_SAMPLES = 50
-TOLERANCE = 0.95 # Accept config if ROUGE >= 95% of full-depth baseline
+TOLERANCE = 0.95 # Accept config if metric >= 95% of full-depth baseline
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 LOGS_DIR = SCRIPT_DIR.parent / "logs"
 CALIB_DIR = LOGS_DIR / "calibration"
 EVAL_DIR = LOGS_DIR / "evaluation"
+SWEEP_LOGS_DIR = LOGS_DIR / "sweeps"
 
 os.makedirs(CALIB_DIR, exist_ok=True)
 os.makedirs(EVAL_DIR, exist_ok=True)
+os.makedirs(SWEEP_LOGS_DIR, exist_ok=True)
 
 def run_cmd(cmd):
     print(f"\n[RUNNING] {' '.join(cmd)}")
@@ -31,6 +39,7 @@ def run_cmd(cmd):
 def get_latest_json(dir_path, run_id_prefix):
     # Find the latest json matching the prefix
     files = glob.glob(f"{dir_path}/{run_id_prefix}__*.json")
+    # Filter out progress files
     files = [f for f in files if "progress_" not in f]
     if not files:
         return None
@@ -39,6 +48,15 @@ def get_latest_json(dir_path, run_id_prefix):
         return json.load(f)
 
 def run_calibrated_pipeline():
+    # We need pandas for sweep logging
+    try:
+        import pandas as pd
+    except ImportError:
+        print("Pandas not found. Sweep logs will be JSON only.")
+        pd = None
+
+    master_summary = []
+
     for model in MODELS:
         model_name = model.split("/")[-1]
         for task in TASKS:
@@ -64,18 +82,20 @@ def run_calibrated_pipeline():
                     print(f"Failed to get baseline data for {method} / {task}. Skipping.")
                     continue
                 
-                baseline_rouge = ar_data.get("quality_metrics", {}).get("rouge_l", 0.0)
-                target_rouge = baseline_rouge * TOLERANCE
-                print(f"Baseline ROUGE-L: {baseline_rouge:.4f} -> Target ROUGE-L: {target_rouge:.4f}")
+                metric_key = TASK_METRIC_KEY.get(task, "rouge_l")
+                baseline_score = ar_data.get("quality_metrics", {}).get(metric_key, 0.0)
+                target_score = baseline_score * TOLERANCE
+                print(f"Baseline {metric_key}: {baseline_score:.4f} -> Target: {target_score:.4f}")
                 
                 # 2. Sweep Self-Speculative Configs
                 sweep_results = []
                 for el in EXIT_LAYERS:
                     for ns in NUM_SPECS:
                         ss_run_id = f"{model_name}__{method}__self_speculative__{task}"
-                        # Delete previous sweep progress files to avoid pollution
+                        # Clean progress file
                         for p in glob.glob(f"{CALIB_DIR}/progress_{ss_run_id}*.json"):
-                            os.remove(p)
+                            try: os.remove(p)
+                            except: pass
                             
                         cmd_ss = [
                             "python", str(SCRIPT_DIR / "02_run_benchmark.py"),
@@ -93,33 +113,56 @@ def run_calibrated_pipeline():
                         
                         ss_data = get_latest_json(CALIB_DIR, ss_run_id)
                         if ss_data:
-                            rouge = ss_data.get("quality_metrics", {}).get("rouge_l", 0.0)
+                            score = ss_data.get("quality_metrics", {}).get(metric_key, 0.0)
                             tps = ss_data.get("efficiency_metrics", {}).get("decode_tps", 0.0)
+                            jpt = ss_data.get("energy_metrics", {}).get("joules_per_token", 0.0)
+                            ar = ss_data.get("efficiency_metrics", {}).get("acceptance_rate", 0.0)
+                            
                             sweep_results.append({
+                                "method": method,
+                                "task": task,
                                 "exit_layer": el,
                                 "num_speculations": ns,
-                                "rouge_l": rouge,
-                                "decode_tps": tps
+                                "score": score,
+                                "decode_tps": tps,
+                                "joules_per_token": jpt,
+                                "acceptance_rate": ar
                             })
+                
+                # Save Sweep Data
+                if sweep_results:
+                    if pd:
+                        sweep_df = pd.DataFrame(sweep_results)
+                        sweep_csv = SWEEP_LOGS_DIR / f"sweep_{method}_{task}.csv"
+                        sweep_df.to_csv(sweep_csv, index=False)
+                        print(f"Saved sweep CSV to {sweep_csv}")
                             
-                # 3. Select Best Config
-                valid_configs = [c for c in sweep_results if c["rouge_l"] >= target_rouge]
+                # 3. Select Best Config (Highest Acceptance Rate among those > 95% baseline)
+                valid_configs = [c for c in sweep_results if c["score"] >= target_score]
                 if not valid_configs:
-                    print(f"WARNING: No config met the target ROUGE for {method}. Falling back to fastest overall.")
+                    print(f"WARNING: No config met target for {method}. Falling back to best overall AR.")
                     valid_configs = sweep_results
                 
                 if not valid_configs:
-                    print(f"Sweep failed completely for {method}. Skipping final eval.")
                     continue
                     
-                best_config = max(valid_configs, key=lambda x: x["decode_tps"])
+                best_config = max(valid_configs, key=lambda x: x["acceptance_rate"])
                 best_el = best_config["exit_layer"]
                 best_ns = best_config["num_speculations"]
-                print(f"Selected Best Config for {method}: Exit Layer {best_el}, Speculations {best_ns} (TPS: {best_config['decode_tps']:.2f}, ROUGE: {best_config['rouge_l']:.4f})")
+                print(f"*** WINNER for {method}: Exit Layer {best_el}, Spec {best_ns} (AR: {best_config['acceptance_rate']:.4f}) ***")
                 
-                # 4. Final Evaluation on 50 Samples (Sample=True to avoid greedy loops)
-                print(f"\n{'='*80}\nRunning Final Evaluation for {method} on {task}\n{'='*80}")
-                eval_run_id = f"{model_name}__{method}__self_speculative__{task}"
+                master_summary.append({
+                    "method": method,
+                    "task": task,
+                    "best_exit_layer": best_el,
+                    "best_num_specs": best_ns,
+                    "calibration_ar": best_config["acceptance_rate"],
+                    "calibration_tps": best_config["decode_tps"],
+                    "calibration_score": best_config["score"]
+                })
+
+                # 4. Final Evaluation
+                print(f"\nFinal Evaluation for {method} on {task}...")
                 cmd_eval = [
                     "python", str(SCRIPT_DIR / "02_run_benchmark.py"),
                     "--model", model,
@@ -133,6 +176,13 @@ def run_calibrated_pipeline():
                     "--output_dir", str(EVAL_DIR)
                 ]
                 run_cmd(cmd_eval)
+
+    # Save the Master Summary
+    if master_summary and pd:
+        summary_df = pd.DataFrame(master_summary)
+        summary_csv = SCRIPT_DIR.parent / "results" / "calibration_summary.csv"
+        summary_df.to_csv(summary_csv, index=False)
+        print(f"\n[PROTOCOL] Master calibration summary saved to {summary_csv}")
 
 if __name__ == "__main__":
     run_calibrated_pipeline()

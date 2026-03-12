@@ -1,0 +1,76 @@
+{
+  "run_id": "layerskip-llama2-13B__awq__self_speculative__cnn_dm_summarization",
+  "timestamp": "2026-03-12T01:13:37.658257Z",
+  "config": {
+    "model": "facebook/layerskip-llama2-13B",
+    "model_path": "/workspace/ptq-ee/quantized_models/layerskip-llama2-13B-awq",
+    "ptq_method": "awq",
+    "ptq_description": "Activation-aware Weight Quantization \u2014 W4A16",
+    "bits_weights": 4,
+    "bits_activations": 16,
+    "generation_strategy": "self_speculative",
+    "exit_layer": 30,
+    "num_speculations": 6,
+    "task": "cnn_dm_summarization",
+    "num_samples": 100,
+    "n_shot": 0,
+    "max_steps": 256,
+    "sample": true
+  },
+  "quality_metrics": {
+    "rouge_l": 0.12463051825761795,
+    "rouge_1": 0.18661823868751526,
+    "rouge_2": 0.05496452376246452,
+    "bleu": 0.0,
+    "edit_distance": 651.0599975585938
+  },
+  "efficiency_metrics": {
+    "tokens_per_second": 2.122,
+    "time_per_token_ms": 487.187,
+    "prefill_tps": 445.014,
+    "decode_tps": 2.181,
+    "total_benchmark_time_s": 10351.3,
+    "acceptance_rate": 0.5434,
+    "peak_vram_gb": 33.192,
+    "model_load_time_s": 10.32,
+    "vram_after_load_gb": 6.745
+  },
+  "energy_metrics": {
+    "total_joules": 28203.039,
+    "joules_per_token": 1.2869,
+    "avg_power_watts": 257.2,
+    "avg_gpu_util_percent": 96.0,
+    "avg_cpu_util_percent": 0.7,
+    "peak_power_watts": 279.56,
+    "num_power_samples": 776,
+    "pynvml_available": true
+  },
+  "raw_layerskip_metrics": {
+    "predicted_text": {
+      "rouge-l": 0.12463051825761795,
+      "rouge-1": 0.18661823868751526,
+      "rouge-2": 0.05496452376246452,
+      "rouge-3": 0.02651456743478775,
+      "bleu_score": 0.0,
+      "exact_match": 651.0599975585938
+    },
+    "acceptance_rate": {
+      "mean": 0.5433501160144806
+    },
+    "total_time": {
+      "mean": 103.2733097076416
+    },
+    "time_per_token": {
+      "mean": 0.48718658089637756
+    },
+    "tokens_per_second": {
+      "mean": 2.1220199811458587
+    },
+    "prefill_tps": {
+      "mean": 445.0142724609375
+    },
+    "decode_tps": {
+      "mean": 2.181465240716934
+    }
+  }
+}

@@ -190,16 +190,29 @@ def run_benchmark(args):
     # Device
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # 1. Skip check: if the final result file exists, don't run
+    # 1. Skip check & Resume Logic
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
     
-    # We look for ANY file that starts with this run_id in the output dir
+    # Check if FINAL result exists
     existing_results = list(out_dir.glob(f"{run_id}__*.json"))
     if existing_results:
-        print(f"\n[Skip] Results for {run_id} already exist. Skipping benchmark.")
+        print(f"\n[Skip] Final results for {run_id} already exist. Skipping.")
         return
+
+    # Check for partial progress file to resume
+    progress_file = Path(f"progress_{run_id}.json")
+    start_index = 0
+    if progress_file.exists():
+        try:
+            with open(progress_file, "r") as f:
+                data = json.load(f)
+                if data:
+                    start_index = data[-1]["index"] + 1
+                    print(f"\n[Resume] Found partial progress ({len(data)} samples). Resuming from index {start_index}...")
+        except Exception as e:
+            print(f"Warning: Could not read progress file: {e}. Starting from scratch.")
 
     # Init distributed (required by LayerSkip setup)
     if not torch.distributed.is_initialized():
@@ -297,6 +310,7 @@ def run_benchmark(args):
         seed=42,
         run_id=run_id,  # Pass the ID for organized temp saving
         meter=meter,  # Pass the energy meter
+        start_index=start_index, # RESUME SUPPORT
     )
 
     if torch.cuda.is_available():

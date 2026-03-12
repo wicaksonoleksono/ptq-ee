@@ -185,6 +185,7 @@ def benchmark(
     seed=None,
     run_id: str = "default_run",
     meter=None,
+    start_index: int = 0,
 ):
     if generation_config.generation_strategy == "autoregressive":
         generation_strategy: GenerationStrategy = AutoRegressiveGenerationStrategy()
@@ -217,13 +218,23 @@ def benchmark(
     )
 
     # Persistent temp results file for long runs
-    # Naming it by run_id makes it easy to find and prevents overwriting different experiments
     temp_save_path = f"progress_{run_id}.json"
-    print(f"[Benchmark] Saving incremental progress to {temp_save_path}")
     progress_data = []
+    if start_index > 0 and os.path.exists(temp_save_path):
+        try:
+            with open(temp_save_path, "r") as f:
+                progress_data = json.load(f)
+            print(f"[Benchmark] Resumed with {len(progress_data)} existing samples.")
+        except:
+            print("[Benchmark] Warning: Could not load existing progress, starting from scratch.")
+            start_index = 0
 
     metrics = EvaluationMetrics.build_metrics()
     for i, example in enumerate(tqdm(evaluation_set)):
+        # Skip if already done
+        if i < start_index:
+            continue
+            
         # Start meter specifically for this inference
         if meter: meter.start()
         
@@ -305,6 +316,7 @@ def main(
     benchmark_arguments: BenchmarkArguments,
     generation_config: GenerationConfig,
     output_fname: str,
+    start_index: int = 0,
 ):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -320,7 +332,13 @@ def main(
     # Setup and Run Benchmark
     setup(args, device=device)
     model, tokenizer = load_model_and_tokenizer(args, device=device)
-    metric_result = benchmark(model, tokenizer, benchmark_arguments, generation_config)
+    metric_result = benchmark(
+        model, 
+        tokenizer, 
+        benchmark_arguments, 
+        generation_config, 
+        start_index=start_index
+    )
     print(metric_result)
 
     # Save config and results to file

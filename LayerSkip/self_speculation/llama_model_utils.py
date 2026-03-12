@@ -142,24 +142,30 @@ def decode_next_token(
     temperature: Optional[float] = 0.7,
     top_k: Optional[int] = 50,
     top_p: Optional[float] = 0.95,
-) -> torch.Tensor:
-    if token_idx:
-        logits = logits[:, -1, :]
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    # Logits shape: [Batch, Seq, Vocab]
+    if token_idx is not None:
+        logits = logits[:, token_idx:, :]
+    
+    # After slicing, logits shape: [Batch, NewSeq, Vocab]
+    batch_size, seq_len, vocab_size = logits.shape
+    
+    # Reshape to [Batch*Seq, Vocab] for sampling
+    logits = logits.view(-1, vocab_size)
 
     if not sample:
-        next_token = logits.argmax(dim=-1)
-        return next_token, None
+        next_tokens = logits.argmax(dim=-1) # [Batch*Seq]
+        # Return [Batch, Seq] tokens and None
+        return next_tokens.view(batch_size, seq_len), None
     else:
-        if not token_idx:
-            logits.squeeze_(dim=0)
         filtered_logits = top_k_top_p_filtering(
-            logits / temperature, top_k=top_k, top_p=top_p
+            logits / max(temperature, 1e-5), top_k=top_k, top_p=top_p
         )
         probabilities = torch.nn.functional.softmax(filtered_logits, dim=-1)
-        next_token = torch.multinomial(probabilities, num_samples=1)
-        if not token_idx:
-            next_token.transpose_(1, 0)
-        return next_token, probabilities
+        next_tokens = torch.multinomial(probabilities, num_samples=1) # [Batch*Seq, 1]
+        
+        # Return [Batch, Seq] tokens and [Batch*Seq, Vocab] probabilities
+        return next_tokens.view(batch_size, seq_len), probabilities
 
 
 def crop_past_key_values(

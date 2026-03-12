@@ -17,7 +17,7 @@ TASK_METRIC_KEY = {
 }
 
 EXIT_LAYERS = [10, 20, 30, 40] # Llama-2 13B has 40 layers
-NUM_SPECS = [4, 6]
+NUM_SPECS = [6] # Fixed at 6 for research consistency
 CALIB_SAMPLES = 30
 EVAL_SAMPLES = 50
 TOLERANCE = 0.95 # Accept config if metric >= 95% of full-depth baseline

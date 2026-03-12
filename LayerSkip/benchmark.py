@@ -195,7 +195,7 @@ def benchmark(
         # Import here to avoid circular dependencies if any
         from self_speculation.adaptive_generator import AdaptiveEarlyExitStrategy
         generation_strategy: GenerationStrategy = AdaptiveEarlyExitStrategy(
-            confidence_threshold=0.9 # Default, can be made configurable
+            confidence_threshold=generation_config.adaptive_threshold
         )
     else:
         raise Exception(

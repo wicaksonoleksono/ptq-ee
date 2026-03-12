@@ -251,6 +251,7 @@ def run_benchmark(args):
     generation_config = GenerationConfig(
         generation_strategy=args.generation_strategy,
         max_steps=args.max_steps,
+        adaptive_threshold=args.adaptive_threshold, # Pass from CLI
         exit_layer=(
             args.exit_layer if args.generation_strategy == "self_speculative" else -1
         ),
@@ -473,7 +474,13 @@ def parse_args():
         "--generation_strategy",
         type=str,
         default="autoregressive",
-        choices=["autoregressive", "self_speculative", "hf_native"],
+        choices=["autoregressive", "self_speculative", "adaptive", "hf_native"],
+    )
+    parser.add_argument(
+        "--adaptive_threshold",
+        type=float,
+        default=0.9,
+        help="Confidence threshold for adaptive early exit",
     )
     parser.add_argument(
         "--exit_layer",

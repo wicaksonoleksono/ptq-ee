@@ -47,6 +47,7 @@ class GenerationConfig:
     max_steps: int = 512
     exit_layer: int = -1
     num_speculations: int = -1
+    adaptive_threshold: float = 0.9 # NEW: for adaptive strategy
     generation_strategy: str = "autoregressive"
     sample: bool = True
     temperature: float = 0.6

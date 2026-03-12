@@ -190,6 +190,17 @@ def run_benchmark(args):
     # Device
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # 1. Skip check: if the final result file exists, don't run
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
+    
+    # We look for ANY file that starts with this run_id in the output dir
+    existing_results = list(out_dir.glob(f"{run_id}__*.json"))
+    if existing_results:
+        print(f"\n[Skip] Results for {run_id} already exist. Skipping benchmark.")
+        return
+
     # Init distributed (required by LayerSkip setup)
     if not torch.distributed.is_initialized():
         if "MASTER_ADDR" not in os.environ:

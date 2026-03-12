@@ -190,6 +190,12 @@ def benchmark(
         generation_strategy: GenerationStrategy = AutoRegressiveGenerationStrategy()
     elif generation_config.generation_strategy == "self_speculative":
         generation_strategy: GenerationStrategy = SelfSpeculativeGenerationStrategy()
+    elif generation_config.generation_strategy == "adaptive":
+        # Import here to avoid circular dependencies if any
+        from self_speculation.adaptive_generator import AdaptiveEarlyExitStrategy
+        generation_strategy: GenerationStrategy = AdaptiveEarlyExitStrategy(
+            confidence_threshold=0.9 # Default, can be made configurable
+        )
     else:
         raise Exception(
             f"Unsupported generation strategy: {generation_config.generation_strategy}"

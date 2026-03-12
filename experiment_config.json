@@ -1,10 +1,10 @@
 {
   "models": {
-    "primary": "facebook/layerskip-llama2-13B",
+    "primary": "facebook/layerskip-llama3-8B",
     "all_layerskip": [
-      "facebook/layerskip-llama2-13B"
+      "facebook/layerskip-llama3-8B"
     ],
-    "vanilla_baseline": "meta-llama/Llama-2-70b-hf"
+    "vanilla_baseline": "meta-llama/Meta-Llama-3-8B"
   },
 
   "ptq_methods": {
@@ -56,17 +56,17 @@
     },
     "self_speculative_small": {
       "generation_strategy": "self_speculative",
-      "exit_layer": 20,
+      "exit_layer": 8,
       "num_speculations": 6
     },
     "self_speculative_medium": {
       "generation_strategy": "self_speculative",
-      "exit_layer": 30,
+      "exit_layer": 16,
       "num_speculations": 6
     },
     "self_speculative_large": {
       "generation_strategy": "self_speculative",
-      "exit_layer": 40,
+      "exit_layer": 24,
       "num_speculations": 6
     }
   },
@@ -74,28 +74,23 @@
   "tasks": {
     "cnn_dm_summarization": {
       "dataset": "cnn_dm_summarization",
-      "num_samples": 100,
+      "num_samples": 25,
       "primary_metric": "rouge_l",
       "type": "generation"
     },
-    "xsum_summarization": {
-      "dataset": "xsum_summarization",
-      "num_samples": 100,
-      "primary_metric": "rouge_l",
-      "type": "generation"
+    "arc_challenge": {
+      "dataset": "arc_challenge",
+      "num_samples": 25,
+      "primary_metric": "accuracy",
+      "type": "classification"
     }
   },
 
-  "eval_tasks_lm_harness": {
-    "mmlu": { "num_samples": 100, "metric": "accuracy", "type": "classification" },
-    "arc_challenge": { "num_samples": 100, "metric": "accuracy", "type": "classification" }
-  },
-
   "layerskip_sweep": {
-    "exit_layers": [10, 20, 30, 40],
-    "num_speculations": [4, 6, 8],
+    "exit_layers": [8, 16, 24, 32],
+    "num_speculations": [6],
     "sweep_dataset": "cnn_dm_summarization",
-    "sweep_num_samples": 1
+    "sweep_num_samples": 15
   },
 
   "paths": {

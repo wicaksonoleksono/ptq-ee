@@ -6,8 +6,8 @@ import glob
 from pathlib import Path
 
 # Parameters
-MODELS = ["facebook/layerskip-llama2-13B"]
-PTQ_METHODS = ["fp16", "awq", "gptq", "int8_bnb", "smoothquant"]
+MODELS = ["facebook/layerskip-llama3-8B"]
+PTQ_METHODS = ["fp32", "fp16", "awq", "gptq", "int8_bnb", "smoothquant"]
 TASKS = ["cnn_dm_summarization", "arc_challenge"]
 
 # Metric mapping for different tasks
@@ -16,7 +16,7 @@ TASK_METRIC_KEY = {
     "arc_challenge": "exact_match", # In LayerSkip, multiple choice usually uses exact_match or accuracy
 }
 
-EXIT_LAYERS = [10, 20, 30, 40] # Llama-2 13B has 40 layers
+EXIT_LAYERS = [8, 16, 24, 32] # Llama-3 8B has 32 layers
 NUM_SPECS = [6] # Fixed at 6 for research consistency
 CALIB_SAMPLES = 15
 EVAL_SAMPLES = 25
@@ -131,15 +131,21 @@ def run_calibrated_pipeline():
                     print(f"ERROR: No sweep results for {method} / {task}. Skipping.")
                     continue
 
-                # 2. Identify Baseline (Layer 40)
-                baseline_obj = next((c for c in sweep_results if c["exit_layer"] == 40), None)
+                # 2. Identify Baseline (Highest Layer, usually 32)
+                max_el = max(EXIT_LAYERS)
+                baseline_obj = next((c for c in sweep_results if c["exit_layer"] == max_el), None)
                 if not baseline_obj:
-                    print(f"ERROR: Could not find Layer 40 baseline for {method}. Skipping.")
+                    # Fallback to whatever highest layer we actually have results for
+                    actual_max = max([c["exit_layer"] for c in sweep_results])
+                    baseline_obj = next((c for c in sweep_results if c["exit_layer"] == actual_max), None)
+
+                if not baseline_obj:
+                    print(f"ERROR: Could not find baseline for {method}. Skipping.")
                     continue
                 
                 baseline_score = baseline_obj["score"]
                 target_score = baseline_score * TOLERANCE
-                print(f"Baseline (L40): {baseline_score:.4f} -> Target (95%): {target_score:.4f}")
+                print(f"Baseline (L{baseline_obj['exit_layer']}): {baseline_score:.4f} -> Target (95%): {target_score:.4f}")
 
                 # 3. Save Sweep CSV
                 if pd:
@@ -151,7 +157,7 @@ def run_calibrated_pipeline():
                 # 4. Select Best Config (Highest AR among those >= target)
                 valid_configs = [c for c in sweep_results if c["score"] >= target_score]
                 if not valid_configs:
-                    print(f"WARNING: No config met target. Falling back to L40.")
+                    print(f"WARNING: No config met target. Falling back to L{max_el}.")
                     best_config = baseline_obj
                 else:
                     best_config = max(valid_configs, key=lambda x: x["acceptance_rate"])
@@ -173,14 +179,13 @@ def run_calibrated_pipeline():
                 master_summary = [r for r in master_summary if not (r['method'] == method and r['task'] == task)]
                 master_summary.append(new_record)
                 if pd:
-                    pd.DataFrame(master_summary).to_dict('records') # sanity
                     pd.DataFrame(master_summary).to_csv(summary_csv, index=False)
 
                 # 5. Final Evaluation
                 print(f"\nFinal Evaluation for {method} on {task}...")
                 cmd_eval = [
                     "python", str(SCRIPT_DIR / "02_run_benchmark.py"),
-                    "--model", MODELS[0], # Using primary model
+                    "--model", MODELS[0], 
                     "--ptq_method", method,
                     "--task", task,
                     "--generation_strategy", "self_speculative",

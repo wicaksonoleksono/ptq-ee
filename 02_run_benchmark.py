@@ -171,7 +171,7 @@ def reset_vram_stats():
 
 def run_benchmark(args):
     # Resolve which model path to load
-    if args.ptq_method == "fp16":
+    if args.ptq_method in ["fp16", "fp32"]:
         model_path = args.model  # load directly from HF hub / local path
     elif args.ptq_method == "int8_bnb":
         # Check if a quantized dir with load_config.json exists

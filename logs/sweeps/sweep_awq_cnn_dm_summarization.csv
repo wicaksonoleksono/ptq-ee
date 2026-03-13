@@ -1,0 +1,4 @@
+method,task,exit_layer,num_speculations,score,decode_tps,joules_per_token,acceptance_rate
+awq,cnn_dm_summarization,8,6,0.1194247156381607,3.915,63.4925,0.1885
+awq,cnn_dm_summarization,16,6,0.12081616371870041,3.851,65.0661,0.3807
+awq,cnn_dm_summarization,24,6,0.12768369913101196,3.859,64.7031,0.5852

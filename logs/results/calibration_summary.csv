@@ -1,3 +1,4 @@
 method,task,best_exit_layer,best_num_specs,calibration_ar,calibration_tps,calibration_score
+awq,cnn_dm_summarization,24,6,0.5852,3.859,0.1276836991310119
 fp32,cnn_dm_summarization,24,6,0.5787,24.505,0.12379863858222961
 fp16,cnn_dm_summarization,24,6,0.6295,32.412,0.1294657438993454

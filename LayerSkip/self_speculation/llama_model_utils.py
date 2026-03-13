@@ -437,7 +437,10 @@ def forward_remainder(
                     else layer_outputs
                 )
                 # Stitch back: the prefix of hidden_states is already processed
-                hidden_states = torch.cat([hidden_states[:, :-num_tokens_to_generate], new_hidden], dim=1)
+                if num_tokens_to_generate > 0:
+                    hidden_states = torch.cat([hidden_states[:, :-num_tokens_to_generate], new_hidden], dim=1)
+                else:
+                    hidden_states = new_hidden
             # if num_tokens_to_generate is 0, these layers are effectively skipped (already cached)
         else:
             # First late layer: Build the full hidden state block

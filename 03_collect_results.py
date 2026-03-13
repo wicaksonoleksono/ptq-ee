@@ -40,11 +40,20 @@ def main():
     rows = []
     # First, find the baseline speed for speedup calculation
     fp16_ar_tps = None
+    # 1. Try to find pure autoregressive baseline
     for r in runs_data:
         cfg = r.get("config", {})
         if cfg.get("ptq_method") == "fp16" and cfg.get("generation_strategy") == "autoregressive":
             fp16_ar_tps = r.get("efficiency_metrics", {}).get("tokens_per_second")
             break
+    
+    # 2. Fallback: try to find full-depth speculative baseline (L32/L40)
+    if fp16_ar_tps is None:
+        for r in runs_data:
+            cfg = r.get("config", {})
+            if cfg.get("ptq_method") == "fp16" and cfg.get("exit_layer") in [32, 40]:
+                fp16_ar_tps = r.get("efficiency_metrics", {}).get("tokens_per_second")
+                break
 
     for r in runs_data:
         config = r.get("config", {})

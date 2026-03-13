@@ -43,7 +43,6 @@ class SelfSpeculativeGenerationStrategy(GenerationStrategy):
     ) -> GenerationStrategyResult:
         # Reset cache for every new prompt
         past_key_values = None
-        torch.cuda.empty_cache()
 
         input_ids_list = input_ids
         input_ids: torch.Tensor = torch.tensor([input_ids_list]).to(model.device)

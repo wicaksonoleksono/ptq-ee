@@ -268,6 +268,15 @@ def run_benchmark(args):
     t_load_start = time.perf_counter()
     model, tokenizer = load_model_for_ptq(model_path, args.ptq_method, device=device)
     t_load_end = time.perf_counter()
+    
+    # SPEEDUP: Use torch.compile to reduce Python loop overhead
+    if hasattr(torch, "compile") and args.ptq_method in ["fp16", "fp32"]:
+        print("[Optimization] Compiling model with torch.compile()...")
+        try:
+            model = torch.compile(model)
+        except Exception as e:
+            print(f"[Optimization] torch.compile failed: {e}. Proceeding with standard mode.")
+    
     load_time_s = t_load_end - t_load_start
     vram_after_load_gb = get_vram_gb()
     print(

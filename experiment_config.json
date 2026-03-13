@@ -8,6 +8,12 @@
   },
 
   "ptq_methods": {
+    "fp32": {
+      "description": "True unquantized float32 — full precision, absolute baseline",
+      "bits_weights": 32,
+      "bits_activations": 32,
+      "library": "transformers"
+    },
     "fp16": {
       "description": "Standard float16 — half precision, standard baseline",
       "bits_weights": 16,

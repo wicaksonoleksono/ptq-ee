@@ -1,0 +1,76 @@
+{
+  "run_id": "calibration__layerskip-llama3-8B__awq__self_speculative_L16_K6__cnn_dm_summarization",
+  "timestamp": "2026-03-13T07:51:51.412384Z",
+  "config": {
+    "model": "facebook/layerskip-llama3-8B",
+    "model_path": "/workspace/ptq-ee/quantized_models/layerskip-llama3-8B-awq",
+    "ptq_method": "awq",
+    "ptq_description": "Activation-aware Weight Quantization \u2014 W4A16",
+    "bits_weights": 4,
+    "bits_activations": 16,
+    "generation_strategy": "self_speculative",
+    "exit_layer": 16,
+    "num_speculations": 6,
+    "task": "cnn_dm_summarization",
+    "num_samples": 30,
+    "n_shot": 0,
+    "max_steps": 256,
+    "sample": true
+  },
+  "quality_metrics": {
+    "rouge_l": 0.12081616371870041,
+    "rouge_1": 0.1845582127571106,
+    "rouge_2": 0.049471355974674225,
+    "bleu": 0.0,
+    "edit_distance": 702.7666625976562
+  },
+  "efficiency_metrics": {
+    "tokens_per_second": 3.736,
+    "time_per_token_ms": 285.44,
+    "prefill_tps": 827.302,
+    "decode_tps": 3.851,
+    "total_benchmark_time_s": 1622.91,
+    "acceptance_rate": 0.3807,
+    "peak_vram_gb": 19.47,
+    "model_load_time_s": 8.91,
+    "vram_after_load_gb": 5.309
+  },
+  "energy_metrics": {
+    "total_joules": 392604.632,
+    "joules_per_token": 65.0661,
+    "avg_power_watts": 241.7,
+    "avg_gpu_util_percent": 90.2,
+    "avg_cpu_util_percent": 1.1,
+    "peak_power_watts": 376.65,
+    "num_power_samples": 12008,
+    "pynvml_available": true
+  },
+  "raw_layerskip_metrics": {
+    "predicted_text": {
+      "rouge-l": 0.12081616371870041,
+      "rouge-1": 0.1845582127571106,
+      "rouge-2": 0.049471355974674225,
+      "rouge-3": 0.01951432414352894,
+      "bleu_score": 0.0,
+      "exact_match": 702.7666625976562
+    },
+    "acceptance_rate": {
+      "mean": 0.3806748420000076
+    },
+    "total_time": {
+      "mean": 53.83685299555461
+    },
+    "time_per_token": {
+      "mean": 0.2854401926199595
+    },
+    "tokens_per_second": {
+      "mean": 3.735940106709798
+    },
+    "prefill_tps": {
+      "mean": 827.3016001383463
+    },
+    "decode_tps": {
+      "mean": 3.8507572412490845
+    }
+  }
+}

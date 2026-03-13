@@ -1,0 +1,5 @@
+method,task,exit_layer,num_speculations,score,decode_tps,joules_per_token,acceptance_rate
+fp32,cnn_dm_summarization,8,6,0.11959513276815414,24.51,9.8747,0.2288
+fp32,cnn_dm_summarization,16,6,0.1323108971118927,22.739,10.3997,0.373
+fp32,cnn_dm_summarization,24,6,0.12379863858222961,24.505,9.7091,0.5787
+fp32,cnn_dm_summarization,32,6,0.0,5.196,43.6076,0.0023

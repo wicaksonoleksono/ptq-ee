@@ -1,0 +1,5 @@
+method,task,exit_layer,num_speculations,score,decode_tps,joules_per_token,acceptance_rate
+fp16,cnn_dm_summarization,8,6,0.12084496021270752,30.643,6.302,0.222
+fp16,cnn_dm_summarization,16,6,0.12069274485111237,29.822,6.5292,0.3891
+fp16,cnn_dm_summarization,24,6,0.1294657438993454,32.412,5.9292,0.6295
+fp16,cnn_dm_summarization,32,6,0.0005012531182728708,6.344,28.7867,0.0022

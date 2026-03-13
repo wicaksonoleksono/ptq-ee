@@ -14,16 +14,16 @@ it imports from the LayerSkip codebase.
 
 Usage (single GPU):
     cd PTQ/LayerSkip
-    LOCAL_RANK=0 python ../scripts/02_run_benchmark.py \\
+    LOCAL_RANK=0 python ./scripts/02_run_benchmark.py \\
         --model facebook/layerskip-llama2-70B \\
         --ptq_method fp16 \\
         --task cnn_dm_summarization \\
         --generation_strategy autoregressive \\
         --num_samples 200 \\
-        --output_dir ../logs
+        --output_dir ./logs
 
     # Self-speculative decoding:
-    LOCAL_RANK=0 python ../scripts/02_run_benchmark.py \\
+    LOCAL_RANK=0 python ./scripts/02_run_benchmark.py \\
         --model facebook/layerskip-llama2-70B \\
         --ptq_method awq \\
         --task cnn_dm_summarization \\
@@ -31,10 +31,10 @@ Usage (single GPU):
         --exit_layer 30 \\
         --num_speculations 6 \\
         --num_samples 200 \\
-        --output_dir ../logs
+        --output_dir ./logs
 
     # With torchrun (multi-GPU or cleaner single-GPU):
-    torchrun --nproc_per_node=1 ../scripts/02_run_benchmark.py [args...]
+    torchrun --nproc_per_node=1 ./scripts/02_run_benchmark.py [args...]
 """
 
 import argparse
@@ -119,8 +119,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
     elif ptq_method == "awq":
         # AWQ models saved by llm-compressor are standard HF format
         tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id_or_path, 
-            fix_mistral_regex=True
+            model_id_or_path, fix_mistral_regex=True
         )
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
@@ -130,8 +129,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
     elif ptq_method == "gptq":
         # GPTQ models saved by llm-compressor are standard HF format
         tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_id_or_path, 
-            fix_mistral_regex=True
+            model_id_or_path, fix_mistral_regex=True
         )
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
@@ -215,13 +213,13 @@ def run_benchmark(args):
         config_suffix = f"_T{args.adaptive_threshold}"
     else:
         config_suffix = ""
-        
+
     run_id = f"{args.run_type}__{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}{config_suffix}__{args.task}"
-    
+
     # 1. Skip check & Resume Logic
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Check if FINAL result exists
     existing_results = list(out_dir.glob(f"{run_id}__*.json"))
     if existing_results:
@@ -237,7 +235,9 @@ def run_benchmark(args):
                 data = json.load(f)
                 if data:
                     start_index = data[-1]["index"] + 1
-                    print(f"\n[Resume] Found partial progress ({len(data)} samples). Resuming from index {start_index}...")
+                    print(
+                        f"\n[Resume] Found partial progress ({len(data)} samples). Resuming from index {start_index}..."
+                    )
         except Exception as e:
             print(f"Warning: Could not read progress file: {e}. Starting from scratch.")
 
@@ -268,7 +268,7 @@ def run_benchmark(args):
     t_load_start = time.perf_counter()
     model, tokenizer = load_model_for_ptq(model_path, args.ptq_method, device=device)
     t_load_end = time.perf_counter()
-    
+
     load_time_s = t_load_end - t_load_start
     vram_after_load_gb = get_vram_gb()
     print(
@@ -279,7 +279,7 @@ def run_benchmark(args):
     generation_config = GenerationConfig(
         generation_strategy=args.generation_strategy,
         max_steps=args.max_steps,
-        adaptive_threshold=args.adaptive_threshold, # Pass from CLI
+        adaptive_threshold=args.adaptive_threshold,  # Pass from CLI
         exit_layer=(
             args.exit_layer if args.generation_strategy == "self_speculative" else -1
         ),
@@ -335,7 +335,7 @@ def run_benchmark(args):
         seed=42,
         run_id=run_id,  # Pass the ID for organized temp saving
         meter=meter,  # Pass the energy meter
-        start_index=start_index, # RESUME SUPPORT
+        start_index=start_index,  # RESUME SUPPORT
     )
 
     if torch.cuda.is_available():
@@ -352,7 +352,7 @@ def run_benchmark(args):
     # Total tokens = avg_tps * avg_total_time * actual_samples_run
     avg_tps = metric_result.get("tokens_per_second", {}).get("mean", 0.0)
     avg_total_time = metric_result.get("total_time", {}).get("mean", 0.0)
-    
+
     # We should use the number of samples actually processed
     num_processed = args.num_samples - start_index
     total_tokens_est = avg_tps * avg_total_time * num_processed
@@ -528,7 +528,7 @@ def parse_args():
     )
 
     # Output
-    parser.add_argument("--output_dir", type=str, default="../logs")
+    parser.add_argument("--output_dir", type=str, default="./logs")
     parser.add_argument(
         "--run_type",
         type=str,

@@ -40,6 +40,7 @@ MODEL_CACHE = (Path(__file__).parent / CFG["paths"]["model_cache_dir"]).resolve(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def model_slug(model_id: str) -> str:
     """facebook/layerskip-llama2-70B → layerskip-llama2-70B"""
     return model_id.split("/")[-1]
@@ -68,6 +69,7 @@ def save_metadata(out_dir: Path, model_id: str, method: str, extra: dict = None)
 # fp16 — just re-save as float16 for a clean baseline checkpoint
 # ---------------------------------------------------------------------------
 
+
 def quantize_fp16(model_id: str, out_dir: Path):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -77,7 +79,7 @@ def quantize_fp16(model_id: str, out_dir: Path):
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         torch_dtype=torch.float16,
-        device_map="cpu",   # keep on CPU for saving
+        device_map="cpu",  # keep on CPU for saving
         cache_dir=str(MODEL_CACHE),
     )
 
@@ -95,6 +97,7 @@ def quantize_fp16(model_id: str, out_dir: Path):
 #       so the benchmark runner knows to load with load_in_8bit=True.
 # ---------------------------------------------------------------------------
 
+
 def quantize_int8_bnb(model_id: str, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
     # BnB int8 is load-time quantization — no offline quantization step.
@@ -104,7 +107,7 @@ def quantize_int8_bnb(model_id: str, out_dir: Path):
     marker = {
         "model_id": model_id,
         "load_in_8bit": True,
-        "note": "Load with: AutoModelForCausalLM.from_pretrained(model_id, load_in_8bit=True, device_map='auto')"
+        "note": "Load with: AutoModelForCausalLM.from_pretrained(model_id, load_in_8bit=True, device_map='auto')",
     }
     with open(out_dir / "load_config.json", "w") as f:
         json.dump(marker, f, indent=2)
@@ -115,6 +118,7 @@ def quantize_int8_bnb(model_id: str, out_dir: Path):
 # ---------------------------------------------------------------------------
 # AWQ — Activation-aware Weight Quantization W4A16
 # ---------------------------------------------------------------------------
+
 
 def quantize_awq(model_id: str, out_dir: Path):
     try:
@@ -148,7 +152,9 @@ def quantize_awq(model_id: str, out_dir: Path):
         ),
     ]
 
-    print(f"[AWQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
+    print(
+        f"[AWQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ..."
+    )
     oneshot(
         model=model,
         tokenizer=tokenizer,
@@ -170,6 +176,7 @@ def quantize_awq(model_id: str, out_dir: Path):
 # ---------------------------------------------------------------------------
 # GPTQ — W4A16
 # ---------------------------------------------------------------------------
+
 
 def quantize_gptq(model_id: str, out_dir: Path):
     try:
@@ -202,7 +209,9 @@ def quantize_gptq(model_id: str, out_dir: Path):
         ),
     ]
 
-    print(f"[GPTQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ...")
+    print(
+        f"[GPTQ] Running quantization (W{method_cfg['bits_weights']}A{method_cfg['bits_activations']}) ..."
+    )
     oneshot(
         model=model,
         tokenizer=tokenizer,
@@ -217,13 +226,19 @@ def quantize_gptq(model_id: str, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
-    save_metadata(out_dir, model_id, "gptq", {"bits": method_cfg["bits_weights"], "group_size": method_cfg["group_size"]})
+    save_metadata(
+        out_dir,
+        model_id,
+        "gptq",
+        {"bits": method_cfg["bits_weights"], "group_size": method_cfg["group_size"]},
+    )
     print("[GPTQ] Done.")
 
 
 # ---------------------------------------------------------------------------
 # SmoothQuant — W8A8
 # ---------------------------------------------------------------------------
+
 
 def quantize_smoothquant(model_id: str, out_dir: Path):
     try:
@@ -264,6 +279,7 @@ def quantize_smoothquant(model_id: str, out_dir: Path):
                 act_scales[name] = scales
             else:
                 act_scales[name] = torch.max(act_scales[name], scales)
+
         return hook
 
     hooks = []
@@ -274,7 +290,9 @@ def quantize_smoothquant(model_id: str, out_dir: Path):
     samples = [s for s in data["text"] if len(s.strip()) > 50][:64]
     with torch.no_grad():
         for text in samples:
-            inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+            inputs = tokenizer(
+                text, return_tensors="pt", truncation=True, max_length=512
+            )
             inputs = {k: v.to(model.device) for k, v in inputs.items()}
             model(**inputs)
 
@@ -291,7 +309,9 @@ def quantize_smoothquant(model_id: str, out_dir: Path):
         if isinstance(module, torch.nn.Linear):
             parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
             parent = model.get_submodule(parent_name) if parent_name else model
-            new_module = W8A8Linear.from_float(module, weight_quant="per_channel", act_quant="per_token")
+            new_module = W8A8Linear.from_float(
+                module, weight_quant="per_channel", act_quant="per_token"
+            )
             setattr(parent, child_name, new_module)
 
     print(f"[SmoothQuant] Saving to {out_dir} ...")
@@ -316,15 +336,33 @@ METHODS = {
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Quantize a model using a specified PTQ method")
-    parser.add_argument("--model", type=str, default=None,
-                        help="HuggingFace model ID (e.g. facebook/layerskip-llama2-70B)")
-    parser.add_argument("--method", type=str, required=True, choices=list(METHODS.keys()),
-                        help="PTQ method to apply")
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="Directory to save quantized model (default: ../quantized_models/<model>-<method>)")
-    parser.add_argument("--all_models", action="store_true",
-                        help="Quantize ALL models listed in experiment_config.json")
+    parser = argparse.ArgumentParser(
+        description="Quantize a model using a specified PTQ method"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="HuggingFace model ID (e.g. facebook/layerskip-llama2-70B)",
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        required=True,
+        choices=list(METHODS.keys()),
+        help="PTQ method to apply",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Directory to save quantized model (default: ./quantized_models/<model>-<method>)",
+    )
+    parser.add_argument(
+        "--all_models",
+        action="store_true",
+        help="Quantize ALL models listed in experiment_config.json",
+    )
     return parser.parse_args()
 
 
@@ -354,7 +392,11 @@ def main():
         sys.exit(1)
 
     for model_id in models:
-        out = Path(args.output_dir) if args.output_dir else output_path(model_id, args.method)
+        out = (
+            Path(args.output_dir)
+            if args.output_dir
+            else output_path(model_id, args.method)
+        )
         run_one(model_id, args.method, out)
 
     print("\nAll quantization tasks complete.")

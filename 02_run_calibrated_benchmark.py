@@ -14,16 +14,16 @@ it imports from the LayerSkip codebase.
 
 Usage (single GPU):
     cd PTQ/LayerSkip
-    LOCAL_RANK=0 python ../scripts/02_run_benchmark.py \\
+    LOCAL_RANK=0 python ./scripts/02_run_benchmark.py \\
         --model facebook/layerskip-llama2-70B \\
         --ptq_method fp16 \\
         --task cnn_dm_summarization \\
         --generation_strategy autoregressive \\
         --num_samples 200 \\
-        --output_dir ../logs
+        --output_dir ./logs
 
     # Self-speculative decoding:
-    LOCAL_RANK=0 python ../scripts/02_run_benchmark.py \\
+    LOCAL_RANK=0 python ./scripts/02_run_benchmark.py \\
         --model facebook/layerskip-llama2-70B \\
         --ptq_method awq \\
         --task cnn_dm_summarization \\
@@ -31,10 +31,10 @@ Usage (single GPU):
         --exit_layer 30 \\
         --num_speculations 6 \\
         --num_samples 200 \\
-        --output_dir ../logs
+        --output_dir ./logs
 
     # With torchrun (multi-GPU or cleaner single-GPU):
-    torchrun --nproc_per_node=1 ../scripts/02_run_benchmark.py [args...]
+    torchrun --nproc_per_node=1 ./scripts/02_run_benchmark.py [args...]
 """
 
 import argparse
@@ -194,7 +194,7 @@ def run_benchmark(args):
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     run_id = f"{args.model.split('/')[-1]}__{args.ptq_method}__{args.generation_strategy}__{args.task}"
-    
+
     # Check if FINAL result exists
     existing_results = list(out_dir.glob(f"{run_id}__*.json"))
     if existing_results:
@@ -210,7 +210,9 @@ def run_benchmark(args):
                 data = json.load(f)
                 if data:
                     start_index = data[-1]["index"] + 1
-                    print(f"\n[Resume] Found partial progress ({len(data)} samples). Resuming from index {start_index}...")
+                    print(
+                        f"\n[Resume] Found partial progress ({len(data)} samples). Resuming from index {start_index}..."
+                    )
         except Exception as e:
             print(f"Warning: Could not read progress file: {e}. Starting from scratch.")
 
@@ -251,7 +253,7 @@ def run_benchmark(args):
     generation_config = GenerationConfig(
         generation_strategy=args.generation_strategy,
         max_steps=args.max_steps,
-        adaptive_threshold=args.adaptive_threshold, # Pass from CLI
+        adaptive_threshold=args.adaptive_threshold,  # Pass from CLI
         exit_layer=(
             args.exit_layer if args.generation_strategy == "self_speculative" else -1
         ),
@@ -311,7 +313,7 @@ def run_benchmark(args):
         seed=42,
         run_id=run_id,  # Pass the ID for organized temp saving
         meter=meter,  # Pass the energy meter
-        start_index=start_index, # RESUME SUPPORT
+        start_index=start_index,  # RESUME SUPPORT
     )
 
     if torch.cuda.is_available():
@@ -503,7 +505,7 @@ def parse_args():
     )
 
     # Output
-    parser.add_argument("--output_dir", type=str, default="../logs")
+    parser.add_argument("--output_dir", type=str, default="./logs")
 
     return parser.parse_args()
 

@@ -91,7 +91,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
             model_id_or_path,
             torch_dtype=torch.bfloat16, # Optimized for A100
             device_map=device,
-            attn_implementation="flash_attention_2", # Massive speedup
+            attn_implementation="sdpa", # Massive speedup
             cache_dir=str(MODEL_CACHE),
         )
 
@@ -103,7 +103,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
             model_id_or_path,
             torch_dtype=torch.float32,
             device_map=device,
-            attn_implementation="flash_attention_2",
+            attn_implementation="sdpa",
             cache_dir=str(MODEL_CACHE),
         )
 
@@ -115,7 +115,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
             model_id_or_path,
             load_in_8bit=True,
             device_map=device,
-            attn_implementation="flash_attention_2",
+            attn_implementation="sdpa",
             cache_dir=str(MODEL_CACHE),
         )
 
@@ -127,7 +127,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
             model_id_or_path,
             torch_dtype=torch.bfloat16,
             device_map=device,
-            attn_implementation="flash_attention_2",
+            attn_implementation="sdpa",
         )
 
     elif ptq_method == "gptq":
@@ -141,7 +141,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
             model_id_or_path,
             torch_dtype=torch.bfloat16,
             device_map=device,
-            attn_implementation="flash_attention_2",
+            attn_implementation="sdpa",
             quantization_config=quantization_config,
         )
 

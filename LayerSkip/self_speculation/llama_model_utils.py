@@ -414,12 +414,13 @@ def forward_remainder(
 
     hidden_states = inputs_embeds
     full_hidden_states: Optional[torch.FloatTensor] = None
-    late_position_embeddings = None  # computed once at first late layer
+    late_position_embeddings = None
 
     for idx, decoder_layer in enumerate(model.model.layers):
         is_early = idx < exit_layer
         if is_early:
             if num_tokens_to_generate > 0:
+                # We only need to process the NEW tokens in the early layers
                 early_hidden = hidden_states[:, -num_tokens_to_generate:]
                 layer_outputs = decoder_layer(
                     early_hidden,
@@ -430,16 +431,20 @@ def forward_remainder(
                     cache_position=early_cache_position,
                     position_embeddings=early_position_embeddings,
                 )
-                hidden_states = (
+                new_hidden = (
                     layer_outputs[0]
                     if isinstance(layer_outputs, tuple)
                     else layer_outputs
                 )
-            # else: early layers already cached everything, skip
+                # Stitch back: the prefix of hidden_states is already processed
+                hidden_states = torch.cat([hidden_states[:, :-num_tokens_to_generate], new_hidden], dim=1)
+            # if num_tokens_to_generate is 0, these layers are effectively skipped (already cached)
         else:
-            # Build full_hidden_states once at the first late layer
+            # First late layer: Build the full hidden state block
             if full_hidden_states is None:
                 if exit_query_cache is not None:
+                    # exit_query_cache is the hidden states of ALL tokens from the early exit
+                    # we concatenate it with the hidden states of the new tokens
                     if num_tokens_to_generate > 0:
                         full_hidden_states = torch.cat(
                             [
@@ -449,7 +454,6 @@ def forward_remainder(
                             dim=1,
                         )
                     else:
-                        # FIX: -0 slice returns entire tensor in Python, not empty!
                         full_hidden_states = exit_query_cache
                 else:
                     full_hidden_states = hidden_states
@@ -459,6 +463,7 @@ def forward_remainder(
                     late_position_ids,
                 )
 
+            # Process all layers from exit_layer to the end
             layer_outputs = decoder_layer(
                 full_hidden_states,
                 attention_mask=late_attention_mask,

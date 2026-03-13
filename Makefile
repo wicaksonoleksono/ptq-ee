@@ -8,11 +8,11 @@
 
 SHELL := /bin/bash
 
-MODEL          := facebook/layerskip-llama2-13B
+MODEL          := facebook/layerskip-llama3-8B
 METHOD         := fp16
 TASK           := cnn_dm_summarization
 STRATEGY       := self_speculative
-EXIT_LAYER     := 30
+EXIT_LAYER     := 32
 NUM_SPEC       := 6
 NUM_SAMPLES    := 25
 MAX_STEPS      := 256

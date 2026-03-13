@@ -182,22 +182,22 @@ def run_calibrated_pipeline():
                 if pd:
                     pd.DataFrame(master_summary).to_csv(summary_csv, index=False)
 
-                # 5. Final Evaluation
-                print(f"\nFinal Evaluation for {method} on {task}...")
-                cmd_eval = [
-                    "python", str(SCRIPT_DIR / "02_run_benchmark.py"),
-                    "--model", MODELS[0], 
-                    "--ptq_method", method,
-                    "--task", task,
-                    "--generation_strategy", "self_speculative",
-                    "--exit_layer", str(best_el),
-                    "--num_speculations", str(best_ns),
-                    "--num_samples", str(EVAL_SAMPLES),
-                    "--sample", "True",
-                    "--output_dir", str(EVAL_DIR),
-                    "--run_type", "evaluation"
-                ]
-                run_cmd(cmd_eval)
+                # 5. Final Evaluation (SKIPPED FOR QUICK TREND ANALYSIS)
+                print(f"\n[Trend Mode] Skipping Final Evaluation for {method} on {task}. Using calibration data.")
+                # cmd_eval = [
+                #     "python", str(SCRIPT_DIR / "02_run_benchmark.py"),
+                #     "--model", MODELS[0], 
+                #     "--ptq_method", method,
+                #     "--task", task,
+                #     "--generation_strategy", "self_speculative",
+                #     "--exit_layer", str(best_el),
+                #     "--num_speculations", str(best_ns),
+                #     "--num_samples", str(EVAL_SAMPLES),
+                #     "--sample", "True",
+                #     "--output_dir", str(EVAL_DIR),
+                #     "--run_type", "evaluation"
+                # ]
+                # run_cmd(cmd_eval)
 
     if master_summary and pd:
         print(f"\n[PROTOCOL] Master calibration summary updated at {summary_csv}")

@@ -231,15 +231,14 @@ def benchmark(
             print("[Benchmark] Warning: Could not load existing progress, starting from scratch.")
             start_index = 0
 
-    metrics = EvaluationMetrics.build_metrics()
+    # Phase 1: Generation (Keep GPU Busy)
+    all_results = []
+    print(f"[Benchmark] Phase 1: Generating {benchmark_arguments.num_samples} samples...")
     for i, example in enumerate(tqdm(evaluation_set)):
         # Skip if already done
         if i < start_index:
             continue
             
-        # Record state before this specific inference
-        # Note: We rely on the meter being started by the wrapper script (02_run_benchmark.py)
-        # We do NOT call meter.start() here because it clears the history.
         joules_before = meter.joules if meter else 0.0
         t_start = time.time()
         
@@ -253,29 +252,21 @@ def benchmark(
         
         duration = t_end - t_start
         joules_this_sample = joules_after - joules_before
-        
-        # Get granular energy stats for this specific slice
-        # Since the meter is running in background, avg_power is total_joules / total_time
         avg_watts_this_sample = (joules_this_sample / duration) if duration > 0 else 0.0
         
-        # Hardware util needs current instantaneous samples or an average since last sample.
-        # For simplicity, we'll use the summary which gives average since the meter started.
         summary = meter.summary() if meter else {}
         avg_gpu_util = summary.get("avg_gpu_util_percent", 0.0)
         avg_cpu_util = summary.get("avg_cpu_util_percent", 0.0)
 
         print(
-            f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W, GPU: {avg_gpu_util:.1f}%, CPU: {avg_cpu_util:.1f}%)"
+            f"[Sample {i+1}/{benchmark_arguments.num_samples}] Done. ({duration:.2f}s, {joules_this_sample:.1f}J, {avg_watts_this_sample:.1f}W)"
         )
-
-        if response.generation_strategy_result.acceptance_rate is not None:
-            print(
-                f"[Acceptance Rate]: {response.generation_strategy_result.acceptance_rate:.4f}"
-            )
-
+        
         # Save to list for backup
         progress_entry = {
             "index": i,
+            "example": example, # keep original for phase 2
+            "response": response, # keep response for phase 2
             "prediction": response.decoded_prediction,
             "decode_tps": round(response.decode_tps, 3),
             "num_tokens": response.num_tokens_generated,
@@ -290,22 +281,29 @@ def benchmark(
             "gpu_util_percent": avg_gpu_util,
             "cpu_util_percent": avg_cpu_util,
             "acceptance_rate": response.generation_strategy_result.acceptance_rate,
-            "acceptance_rates_per_step": response.generation_strategy_result.acceptance_rates,
-            "exit_layers_per_token": response.generation_strategy_result.exit_layers,
-            "token_origins_per_token": response.generation_strategy_result.token_origins,
-            "speculation_audit": response.generation_strategy_result.speculation_audit,
         }
+        all_results.append(progress_entry)
         progress_data.append(progress_entry)
 
-        # Every 5 samples, write to disk
+        # Every 5 samples, write to disk (text only)
         if (i + 1) % 5 == 0:
+            # We strip the objects for the JSON dump
+            clean_data = []
+            for d in progress_data:
+                c = d.copy()
+                if "example" in c: del c["example"]
+                if "response" in c: del c["response"]
+                clean_data.append(c)
             with open(temp_save_path, "w") as f:
-                json.dump(progress_data, f, indent=2)
+                json.dump(clean_data, f, indent=2)
 
-        if response.num_tokens_generated == 0:
-            print("Skipping metrics of empty generation")
+    # Phase 2: Evaluation (CPU Heavy)
+    print(f"[Benchmark] Phase 2: Calculating metrics for {len(all_results)} samples on CPU...")
+    metrics = EvaluationMetrics.build_metrics()
+    for res in tqdm(all_results):
+        if res["num_tokens"] == 0:
             continue
-        metrics.update(example, response)
+        metrics.update(res["example"], res["response"])
 
     metric_result = metrics.compute()
 

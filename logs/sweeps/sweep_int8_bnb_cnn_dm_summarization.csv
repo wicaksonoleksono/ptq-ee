@@ -1,0 +1,5 @@
+method,task,exit_layer,num_speculations,score,decode_tps,joules_per_token,acceptance_rate
+int8_bnb,cnn_dm_summarization,8,6,0.11533422023057938,10.226,10.8585,0.2446
+int8_bnb,cnn_dm_summarization,16,6,0.14323192834854126,8.152,13.428,0.3521
+int8_bnb,cnn_dm_summarization,24,6,0.12555120885372162,8.817,12.2744,0.5982
+int8_bnb,cnn_dm_summarization,32,6,0.003738849889487028,1.796,51.5089,0.003

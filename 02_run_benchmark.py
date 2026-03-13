@@ -118,7 +118,10 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
 
     elif ptq_method == "awq":
         # AWQ models saved by llm-compressor are standard HF format
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_id_or_path)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_id_or_path, 
+            fix_mistral_regex=True
+        )
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
             device_map=device,
@@ -126,7 +129,10 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
 
     elif ptq_method == "gptq":
         # GPTQ models saved by llm-compressor are standard HF format
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_id_or_path)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_id_or_path, 
+            fix_mistral_regex=True
+        )
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
             device_map=device,

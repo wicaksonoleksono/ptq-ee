@@ -18,8 +18,8 @@ TASK_METRIC_KEY = {
 
 EXIT_LAYERS = [8, 16, 24, 32] # Llama-3 8B has 32 layers
 NUM_SPECS = [6] # Fixed at 6 for research consistency
-CALIB_SAMPLES = 15
-EVAL_SAMPLES = 25
+CALIB_SAMPLES = 30
+EVAL_SAMPLES = 50
 TOLERANCE = 0.95 # Accept config if metric >= 95% of full-depth baseline
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -143,9 +143,10 @@ def run_calibrated_pipeline():
                     print(f"ERROR: Could not find baseline for {method}. Skipping.")
                     continue
                 
+                metric_key = TASK_METRIC_KEY.get(task, "rouge_l")
                 baseline_score = baseline_obj["score"]
                 target_score = baseline_score * TOLERANCE
-                print(f"Baseline (L{baseline_obj['exit_layer']}): {baseline_score:.4f} -> Target (95%): {target_score:.4f}")
+                print(f"Baseline (L{baseline_obj['exit_layer']}) {metric_key}: {baseline_score:.4f} -> Target (95%): {target_score:.4f}")
 
                 # 3. Save Sweep CSV
                 if pd:

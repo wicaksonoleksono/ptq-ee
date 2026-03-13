@@ -684,8 +684,8 @@ def plot_efficiency_dashboard(runs: list, out_dir: Path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results_json", type=str,
-                        default="./results/results_summary.json")
-    parser.add_argument("--scripts_dir", type=str, default=".",
+                        default="./logs/results/results_summary.json")
+    parser.add_argument("--scripts_dir", type=str, default="./logs",
                         help="Directory containing progress_*.json files")
     parser.add_argument("--output_dir", type=str, default="./logs/figures")
     args = parser.parse_args()

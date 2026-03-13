@@ -31,11 +31,11 @@ CALIB_DIR = LOGS_DIR / "calibration"
 EVAL_DIR = LOGS_DIR / "evaluation"
 SWEEP_LOGS_DIR = LOGS_DIR / "sweeps"
 RESULTS_DIR = LOGS_DIR / "results"
+FIGURES_DIR = LOGS_DIR / "figures"
 
-os.makedirs(CALIB_DIR, exist_ok=True)
-os.makedirs(EVAL_DIR, exist_ok=True)
-os.makedirs(SWEEP_LOGS_DIR, exist_ok=True)
-os.makedirs(RESULTS_DIR, exist_ok=True)
+# Ensure all nested directories exist
+for d in [CALIB_DIR, EVAL_DIR, SWEEP_LOGS_DIR, RESULTS_DIR, FIGURES_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
 
 def run_cmd(cmd):
     print(f"\n[RUNNING] {' '.join(cmd)}")

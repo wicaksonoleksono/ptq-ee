@@ -67,7 +67,7 @@ dry-run:
 	python dry_run.py
 
 dirs:
-	@mkdir -p logs results figures quantized_models model_cache
+	@mkdir -p logs/calibration logs/evaluation logs/results logs/figures logs/sweeps quantized_models model_cache
 
 # ---------------------------------------------------------------------------
 # Phase 0: Download
@@ -217,16 +217,13 @@ pipeline-calibrated: download quantize-all calibrate-and-run collect plot plot-d
 	@echo "========================================"
 
 pipeline: pipeline-calibrated
-clean: clean-logs
+clean: clean-logs clean-models
 
 clean-logs:
 	rm -rf logs/ && echo "logs/ removed"
-
-clean-results:
-	rm -rf results/ && echo "results/ removed"
-
-clean-figures:
-	rm -rf figures/ && echo "figures/ removed"
+	rm -rf results/ && echo "legacy results/ removed"
+	rm -rf figures/ && echo "legacy figures/ removed"
 
 clean-models:
 	rm -rf quantized_models/ && echo "quantized_models/ removed"
+

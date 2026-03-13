@@ -17,8 +17,8 @@ def load_run(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--logs_dir", type=str, default=".")
-    parser.add_argument("--output_dir", type=str, default="./results")
+    parser.add_argument("--logs_dir", type=str, default="./logs")
+    parser.add_argument("--output_dir", type=str, default="./logs/results")
     args = parser.parse_args()
 
     logs_dir = Path(args.logs_dir)

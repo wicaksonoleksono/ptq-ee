@@ -266,9 +266,9 @@ def plot_hardware_timeline(progress_files: list, out_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--logs_dir", type=str, default=".",
+    parser.add_argument("--logs_dir", type=str, default="./logs",
                         help="Directory containing progress_*.json files")
-    parser.add_argument("--output_dir", type=str, default="./figures")
+    parser.add_argument("--output_dir", type=str, default="./logs/figures")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)

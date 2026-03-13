@@ -22,7 +22,10 @@ CALIB_SAMPLES = 30
 EVAL_SAMPLES = 50
 TOLERANCE = 0.95 # Accept config if metric >= 95% of full-depth baseline
 
-# Base directories relative to CURRENT WORKING DIRECTORY
+# Location of THIS script (scripts/)
+SCRIPT_DIR = Path(__file__).parent.resolve()
+
+# Base directories relative to CURRENT WORKING DIRECTORY (the PTQ root)
 LOGS_DIR = Path("./logs")
 CALIB_DIR = LOGS_DIR / "calibration"
 EVAL_DIR = LOGS_DIR / "evaluation"

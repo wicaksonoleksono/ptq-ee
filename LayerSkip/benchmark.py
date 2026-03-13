@@ -308,13 +308,19 @@ def benchmark(
     metric_result = metrics.compute()
 
     # Final save and cleanup
+    clean_final_data = []
+    for d in progress_data:
+        c = d.copy()
+        if "example" in c: del c["example"]
+        if "response" in c: del c["response"]
+        clean_final_data.append(c)
+
     with open(temp_save_path, "w") as f:
-        json.dump(progress_data, f, indent=2)
-    print(
-        f"[Benchmark] Completed. All {len(progress_data)} samples saved to temp file."
-    )
+        json.dump(clean_final_data, f, indent=2)
+    print(f"[Benchmark] Completed. All {len(progress_data)} samples saved to temp file.")
 
     return metric_result
+
 
 
 def main(

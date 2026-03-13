@@ -123,15 +123,11 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_id_or_path, fix_mistral_regex=True
         )
-        # Use Marlin for AWQ on A100
-        from transformers import AwqConfig
-        quantization_config = AwqConfig(version="marlin")
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
             torch_dtype=torch.bfloat16,
             device_map=device,
             attn_implementation="flash_attention_2",
-            quantization_config=quantization_config,
         )
 
     elif ptq_method == "gptq":

@@ -89,8 +89,9 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
         )
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16, # Optimized for A100
             device_map=device,
+            attn_implementation="flash_attention_2", # Massive speedup
             cache_dir=str(MODEL_CACHE),
         )
 
@@ -102,6 +103,7 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
             model_id_or_path,
             torch_dtype=torch.float32,
             device_map=device,
+            attn_implementation="flash_attention_2",
             cache_dir=str(MODEL_CACHE),
         )
 
@@ -113,27 +115,38 @@ def load_model_for_ptq(model_id_or_path: str, ptq_method: str, device: str = "au
             model_id_or_path,
             load_in_8bit=True,
             device_map=device,
+            attn_implementation="flash_attention_2",
             cache_dir=str(MODEL_CACHE),
         )
 
     elif ptq_method == "awq":
-        # AWQ models saved by llm-compressor are standard HF format
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_id_or_path, fix_mistral_regex=True
         )
+        # Use Marlin for AWQ on A100
+        from transformers import AwqConfig
+        quantization_config = AwqConfig(version="marlin")
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
+            torch_dtype=torch.bfloat16,
             device_map=device,
+            attn_implementation="flash_attention_2",
+            quantization_config=quantization_config,
         )
 
     elif ptq_method == "gptq":
-        # GPTQ models saved by llm-compressor are standard HF format
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_id_or_path, fix_mistral_regex=True
         )
+        # Use Marlin for GPTQ on A100
+        from transformers import GPTQConfig
+        quantization_config = GPTQConfig(bits=4, use_marlin=True)
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_id_or_path,
+            torch_dtype=torch.bfloat16,
             device_map=device,
+            attn_implementation="flash_attention_2",
+            quantization_config=quantization_config,
         )
 
     elif ptq_method == "smoothquant":

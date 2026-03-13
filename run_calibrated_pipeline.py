@@ -22,15 +22,17 @@ CALIB_SAMPLES = 30
 EVAL_SAMPLES = 50
 TOLERANCE = 0.95 # Accept config if metric >= 95% of full-depth baseline
 
-SCRIPT_DIR = Path(__file__).parent.resolve()
-LOGS_DIR = SCRIPT_DIR.parent / "logs"
+# Base directories relative to CURRENT WORKING DIRECTORY
+LOGS_DIR = Path("./logs")
 CALIB_DIR = LOGS_DIR / "calibration"
 EVAL_DIR = LOGS_DIR / "evaluation"
 SWEEP_LOGS_DIR = LOGS_DIR / "sweeps"
+RESULTS_DIR = LOGS_DIR / "results"
 
 os.makedirs(CALIB_DIR, exist_ok=True)
 os.makedirs(EVAL_DIR, exist_ok=True)
 os.makedirs(SWEEP_LOGS_DIR, exist_ok=True)
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
 def run_cmd(cmd):
     print(f"\n[RUNNING] {' '.join(cmd)}")
@@ -38,7 +40,7 @@ def run_cmd(cmd):
 
 def get_latest_json(dir_path, run_id_prefix):
     # Find the latest json matching the prefix
-    files = glob.glob(f"{dir_path}/{run_id_prefix}__*.json")
+    files = glob.glob(f"{str(dir_path)}/{run_id_prefix}__*.json")
     # Filter out progress files
     files = [f for f in files if "progress_" not in f]
     if not files:
@@ -55,8 +57,7 @@ def run_calibrated_pipeline():
         print("Pandas not found. Sweep logs will be JSON only.")
         pd = None
 
-    summary_csv = SCRIPT_DIR.parent / "results" / "calibration_summary.csv"
-    summary_csv.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
+    summary_csv = RESULTS_DIR / "calibration_summary.csv"
     master_summary = []
     if summary_csv.exists() and pd:
         try:

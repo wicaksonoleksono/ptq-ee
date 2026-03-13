@@ -336,6 +336,7 @@ def run_benchmark(args):
         run_id=run_id,  # Pass the ID for organized temp saving
         meter=meter,  # Pass the energy meter
         start_index=start_index,  # RESUME SUPPORT
+        output_dir=str(out_dir), # Ensure temp files go to the right folder
     )
 
     if torch.cuda.is_available():

@@ -187,20 +187,23 @@ collect: dirs
 	@echo "========================================"
 	@echo "Phase 4: Collecting results"
 	@echo "========================================"
-	python 03_collect_results.py --logs_dir ./logs --output_dir ./results
+	mkdir -p ./logs/results
+	python 03_collect_results.py --logs_dir ./logs --output_dir ./logs/results
 
 plot: dirs
 	@echo "========================================"
 	@echo "Phase 5: Generating figures"
 	@echo "========================================"
-	python 04_plot_results.py --results_json ./results/results_summary.json --output_dir ./figures
+	mkdir -p ./logs/figures
+	python 04_plot_results.py --results_json ./logs/results/results_summary.json --output_dir ./logs/figures
 
 plot-details: dirs
 	@echo "========================================"
 	@echo "Phase 6: Generating detailed speculation figures"
 	@echo "========================================"
-	# Looks in current dir where progress_*.json files are usually generated
-	python 05_plot_speculation_details.py --logs_dir . --output_dir ./figures
+	mkdir -p ./logs/figures
+	# Looks in logs dir where progress_*.json files are usually generated
+	python 05_plot_speculation_details.py --logs_dir ./logs --output_dir ./logs/figures
 
 # ---------------------------------------------------------------------------
 # Full pipeline
@@ -209,12 +212,12 @@ pipeline-calibrated: download quantize-all calibrate-and-run collect plot plot-d
 	@echo ""
 	@echo "========================================"
 	@echo "Pipeline complete!"
-	@echo "  Results: ./results/results_table.csv"
-	@echo "  Figures: ./figures/"
+	@echo "  Results: ./logs/results/results_table.csv"
+	@echo "  Figures: ./logs/figures/"
 	@echo "========================================"
 
 pipeline: pipeline-calibrated
-clean: clean-logs clean-results clean-figures
+clean: clean-logs
 
 clean-logs:
 	rm -rf logs/ && echo "logs/ removed"

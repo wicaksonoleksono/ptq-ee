@@ -687,7 +687,7 @@ def main():
                         default="./results/results_summary.json")
     parser.add_argument("--scripts_dir", type=str, default=".",
                         help="Directory containing progress_*.json files")
-    parser.add_argument("--output_dir", type=str, default="./figures")
+    parser.add_argument("--output_dir", type=str, default="./logs/figures")
     args = parser.parse_args()
 
     res_path = Path(args.results_json)

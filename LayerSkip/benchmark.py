@@ -188,6 +188,7 @@ def benchmark(
     run_id: str = "default_run",
     meter=None,
     start_index: int = 0,
+    output_dir: str = "./logs",
 ):
     if generation_config.generation_strategy == "autoregressive":
         generation_strategy: GenerationStrategy = AutoRegressiveGenerationStrategy()
@@ -220,7 +221,7 @@ def benchmark(
     )
 
     # Persistent temp results file for long runs
-    temp_save_path = f"progress_{run_id}.json"
+    temp_save_path = Path(output_dir) / f"progress_{run_id}.json"
     progress_data = []
     if start_index > 0 and os.path.exists(temp_save_path):
         try:
